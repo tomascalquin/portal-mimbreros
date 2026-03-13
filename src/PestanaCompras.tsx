@@ -9,6 +9,7 @@ export default function PestanaCompras({ miId }: any) {
   const [carrito, setCarrito] = useState<{ [key: string]: number }>({});
   
   const [historialCompras, setHistorialCompras] = useState<any[]>([]);
+  const [nombreMiLocal, setNombreMiLocal] = useState('el local');
 
   // Estados para la ventana de envío
   const [modalEnvio, setModalEnvio] = useState(false);
@@ -24,10 +25,13 @@ export default function PestanaCompras({ miId }: any) {
   const [formArtCosto, setFormArtCosto] = useState('');
   const [formArtDesc, setFormArtDesc] = useState('');
   const [formArtStock, setFormArtStock] = useState('1');
+  
+  // --- AQUÍ AGREGAMOS EL ESTADO PARA LA SEGUNDA FOTO ---
   const [formArtArchivo, setFormArtArchivo] = useState<File | null>(null);
+  const [formArtArchivo2, setFormArtArchivo2] = useState<File | null>(null);
   const [procesandoArt, setProcesandoArt] = useState(false);
 
-  // --- NUEVOS ESTADOS: CREAR ARTESANO MANUALMENTE ---
+  // --- ESTADOS: CREAR ARTESANO MANUALMENTE ---
   const [modalArtesano, setModalArtesano] = useState(false);
   const [formProvRut, setFormProvRut] = useState('');
   const [formProvNombre, setFormProvNombre] = useState('');
@@ -42,6 +46,11 @@ export default function PestanaCompras({ miId }: any) {
   }, [miId]);
 
   async function cargarDatos() {
+    const { data: miTienda } = await supabase.from('tiendas').select('nombre_local').eq('id', miId).single();
+    if (miTienda && miTienda.nombre_local) {
+      setNombreMiLocal(miTienda.nombre_local);
+    }
+
     const { data: listaArtesanos } = await supabase.from('artesanos').select('*').eq('tienda_id', miId);
     if (listaArtesanos) setArtesanos(listaArtesanos);
 
@@ -85,11 +94,11 @@ export default function PestanaCompras({ miId }: any) {
       });
     }
 
-    let mensajeTexto = `¡Hola ${artesanoActual.nombre}! Te escribo para hacerte un nuevo pedido para el local:\n\n`;
+    let mensajeTexto = `¡Hola ${artesanoActual.nombre}! Te escribo para hacerte un nuevo pedido para ${nombreMiLocal}:\n\n`;
     items.forEach(item => {
       mensajeTexto += `▪ ${carrito[item.id]} unidades de ${item.nombre} ($${item.precio_costo.toLocaleString('es-CL')} c/u)\n`;
     });
-    mensajeTexto += `\n*TOTAL DEL PEDIDO: $${montoTotalCompra.toLocaleString('es-CL')}*\n\nPor favor confírmame cuando puedas. ¡Saludos!`;
+    mensajeTexto += `\n*TOTAL A CANCELAR: $${montoTotalCompra.toLocaleString('es-CL')}*\n\nPor favor confírmame cuando puedas. ¡Saludos!`;
 
     setDatosEnvio({
       texto: mensajeTexto,
@@ -109,7 +118,6 @@ export default function PestanaCompras({ miId }: any) {
     setSubPestanaCompras('historial');
   };
 
-  // --- NUEVA FUNCIÓN: GUARDAR ARTESANO MANUAL ---
   const guardarArtesanoManual = async (e: any) => {
     e.preventDefault();
     setGuardandoProv(true);
@@ -129,18 +137,16 @@ export default function PestanaCompras({ miId }: any) {
     if (error) {
       alert("Hubo un error al guardar al proveedor: " + error.message);
     } else {
-      await cargarDatos(); // Recargamos la lista
-      setArtesanoSeleccionadoRut(formProvRut); // Lo seleccionamos automáticamente
-      setModalArtesano(false); // Cerramos la ventana
+      await cargarDatos(); 
+      setArtesanoSeleccionadoRut(formProvRut); 
+      setModalArtesano(false); 
       
-      // Limpiamos el formulario
       setFormProvRut(''); setFormProvNombre(''); setFormProvDir(''); 
       setFormProvTel(''); setFormProvCorreo(''); setFormProvPago('Efectivo');
     }
     setGuardandoProv(false);
   };
 
-  // --- FUNCIONES DEL GESTOR DE CATÁLOGO ---
   const abrirGestorParaNuevoDirecto = () => {
     if (!artesanoSeleccionadoRut) {
       alert("Por favor, primero selecciona un artesano en la lista de arriba.");
@@ -158,6 +164,7 @@ export default function PestanaCompras({ miId }: any) {
     setFormArtDesc('');
     setFormArtStock('1');
     setFormArtArchivo(null);
+    setFormArtArchivo2(null); // Limpiamos la segunda foto
   };
 
   const cargarParaEditar = (art: any) => {
@@ -167,6 +174,7 @@ export default function PestanaCompras({ miId }: any) {
     setFormArtDesc(art.descripcion || '');
     setFormArtStock(art.stock ? art.stock.toString() : '1');
     setFormArtArchivo(null); 
+    setFormArtArchivo2(null); // Limpiamos visualmente la segunda foto
     setMostrandoFormularioGestor(true);
   };
 
@@ -174,13 +182,25 @@ export default function PestanaCompras({ miId }: any) {
     e.preventDefault();
     setProcesandoArt(true);
     
+    // --- LÓGICA PARA SUBIR AMBAS FOTOS ---
     let fotoUrl = artEditandoId ? articulosFiltrados.find(a => a.id === artEditandoId)?.foto_url : null;
+    let fotoUrl2 = artEditandoId ? articulosFiltrados.find(a => a.id === artEditandoId)?.foto_url_2 : null;
+
     if (formArtArchivo) {
       const nombreArchivo = `${miId}/artesanos/${Math.random()}-${formArtArchivo.name}`;
       const { error: uploadError } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, formArtArchivo);
       if (!uploadError) {
         const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo);
         fotoUrl = data.publicUrl;
+      }
+    }
+
+    if (formArtArchivo2) {
+      const nombreArchivo2 = `${miId}/artesanos/secundaria-${Math.random()}-${formArtArchivo2.name}`;
+      const { error: uploadError2 } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, formArtArchivo2);
+      if (!uploadError2) {
+        const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo2);
+        fotoUrl2 = data.publicUrl;
       }
     }
 
@@ -195,6 +215,7 @@ export default function PestanaCompras({ miId }: any) {
     };
 
     if (fotoUrl) datos.foto_url = fotoUrl;
+    if (fotoUrl2) datos.foto_url_2 = fotoUrl2; // Asignamos la segunda foto
 
     if (artEditandoId) {
       await supabase.from('articulos_maestro').update(datos).eq('id', artEditandoId);
@@ -229,13 +250,15 @@ export default function PestanaCompras({ miId }: any) {
 
     setProcesandoArt(true);
     
+    // --- TRASPASAMOS TAMBIÉN LA SEGUNDA FOTO ---
     const datosPublicos = {
       tienda_id: miId,
       nombre: art.nombre,
       descripcion: art.descripcion || '',
       precio: precioVenta,
       stock: art.stock || 1,
-      foto_url: art.foto_url || null
+      foto_url: art.foto_url || null,
+      foto_url_2: art.foto_url_2 || null // La segunda foto viaja al catálogo
     };
 
     const { error } = await supabase.from('productos').insert(datosPublicos);
@@ -261,7 +284,6 @@ export default function PestanaCompras({ miId }: any) {
         <div className="space-y-4 pt-2 pb-24">
           
           <div className="flex gap-2 relative">
-            {/* Lista Desplegable */}
             <div className="relative flex-1">
               <select value={artesanoSeleccionadoRut} onChange={(e) => { setArtesanoSeleccionadoRut(e.target.value); setCarrito({}); }} className="w-full bg-[#4A4440] text-white p-4 py-5 rounded-2xl font-bold text-lg shadow-sm appearance-none focus:outline-none">
                 <option value="">ARTESANO (Seleccionar)</option>
@@ -270,7 +292,6 @@ export default function PestanaCompras({ miId }: any) {
               <div className="absolute right-5 top-1/2 -translate-y-1/2 text-white pointer-events-none">▼</div>
             </div>
             
-            {/* NUEVO BOTÓN: Agregar Artesano */}
             <button 
               onClick={() => setModalArtesano(true)}
               className="bg-amber-600 hover:bg-amber-700 text-white w-16 rounded-2xl flex items-center justify-center shadow-sm transition-colors"
@@ -484,10 +505,19 @@ export default function PestanaCompras({ miId }: any) {
                 </h4>
 
                 <form onSubmit={guardarArticulo} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Foto (Opcional)</label>
-                    <input type="file" accept="image/*" onChange={e => setFormArtArchivo(e.target.files ? e.target.files[0] : null)} className="w-full text-xs text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-amber-50 file:text-amber-700 file:font-bold" />
+                  
+                  {/* --- AQUÍ ESTÁN LAS DOS FOTOS --- */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-2">Foto Principal</label>
+                      <input type="file" accept="image/*" onChange={e => setFormArtArchivo(e.target.files ? e.target.files[0] : null)} className="w-full text-[10px] text-stone-500 file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:bg-amber-50 file:text-amber-700 file:font-bold" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-2">Foto Detalle (2)</label>
+                      <input type="file" accept="image/*" onChange={e => setFormArtArchivo2(e.target.files ? e.target.files[0] : null)} className="w-full text-[10px] text-stone-500 file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:bg-stone-100 file:text-stone-700 file:font-bold" />
+                    </div>
                   </div>
+
                   <div>
                     <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Nombre del Producto</label>
                     <input type="text" required value={formArtNombre} onChange={(e) => setFormArtNombre(e.target.value)} className="w-full bg-stone-50 border border-stone-300 p-3.5 rounded-xl text-base font-bold focus:outline-none focus:border-amber-600 focus:bg-white transition-colors" placeholder="Ej: Panera Ovalada" />

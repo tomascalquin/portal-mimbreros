@@ -10,11 +10,18 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
   const [modalProducto, setModalProducto] = useState(false);
   const [modalQR, setModalQR] = useState(false);
 
+  // --- NUEVOS ESTADOS: PARA LA VISTA PREVIA (MODAL ELEGANTE) ---
+  const [productoSeleccionado, setProductoSeleccionado] = useState<any>(null);
+  const [fotoActualIndex, setFotoActualIndex] = useState(0);
+
   const [prodNombre, setProdNombre] = useState('');
   const [prodDesc, setProdDesc] = useState('');
   const [prodPrecio, setProdPrecio] = useState('');
   const [prodStock, setProdStock] = useState('1');
+  
+  // --- NUEVO ESTADO: SEGUNDA FOTO ---
   const [prodArchivo, setProdArchivo] = useState<File | null>(null);
+  const [prodArchivo2, setProdArchivo2] = useState<File | null>(null);
   const [guardandoProd, setGuardandoProd] = useState(false);
 
   useEffect(() => {
@@ -29,7 +36,11 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
   const guardarProducto = async (e: any) => {
     e.preventDefault();
     setGuardandoProd(true);
-    let fotoUrl = null;
+    
+    let fotoUrl = productoAEditar ? misProductos.find(p => p.id === productoAEditar)?.foto_url : null;
+    let fotoUrl2 = productoAEditar ? misProductos.find(p => p.id === productoAEditar)?.foto_url_2 : null;
+
+    // Subir Foto Principal
     if (prodArchivo) {
       const nombreArchivo = `${miId}/${Math.random()}-${prodArchivo.name}`;
       const { error } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, prodArchivo);
@@ -38,8 +49,27 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
         fotoUrl = data.publicUrl;
       }
     }
-    const datos: any = { tienda_id: miId, nombre: prodNombre, descripcion: prodDesc, precio: parseFloat(prodPrecio), stock: parseInt(prodStock) };
+
+    // Subir Foto Secundaria (Detalle)
+    if (prodArchivo2) {
+      const nombreArchivo2 = `${miId}/detalle-${Math.random()}-${prodArchivo2.name}`;
+      const { error } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, prodArchivo2);
+      if (!error) {
+        const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo2);
+        fotoUrl2 = data.publicUrl;
+      }
+    }
+
+    const datos: any = { 
+      tienda_id: miId, 
+      nombre: prodNombre, 
+      descripcion: prodDesc, 
+      precio: parseFloat(prodPrecio), 
+      stock: parseInt(prodStock) 
+    };
+
     if (fotoUrl) datos.foto_url = fotoUrl;
+    if (fotoUrl2) datos.foto_url_2 = fotoUrl2;
 
     if (productoAEditar) await supabase.from('productos').update(datos).eq('id', productoAEditar);
     else await supabase.from('productos').insert(datos);
@@ -50,23 +80,28 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
     setGuardandoProd(false);
   };
 
-  const abrirParaEditar = (p: any) => {
+  const abrirParaEditar = (p: any, e: any) => {
+    e.stopPropagation(); // Evita que se abra la vista previa al tocar Editar
     setProductoAEditar(p.id); setProdNombre(p.nombre); setProdDesc(p.descripcion || '');
-    setProdPrecio(p.precio.toString()); setProdStock(p.stock.toString()); setModalProducto(true);
+    setProdPrecio(p.precio.toString()); setProdStock(p.stock.toString()); 
+    setProdArchivo(null); setProdArchivo2(null);
+    setModalProducto(true);
   };
 
-  // --- NUEVA FUNCIÓN: ELIMINAR PRODUCTO DEL CATÁLOGO ---
-  const eliminarProducto = async (id: string, nombre: string) => {
+  const eliminarProducto = async (id: string, nombre: string, e: any) => {
+    e.stopPropagation(); // Evita que se abra la vista previa al tocar Borrar
     const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar "${nombre}" de tu vitrina pública?`);
     if (!confirmar) return;
 
     const { error } = await supabase.from('productos').delete().eq('id', id);
-    
-    if (error) {
-      alert("Hubo un error al eliminar: " + error.message);
-    } else {
-      await cargarProductos();
-    }
+    if (error) alert("Hubo un error al eliminar: " + error.message);
+    else await cargarProductos();
+  };
+
+  // --- NUEVA FUNCIÓN: ABRIR LA VISTA PREVIA ---
+  const abrirDetalle = (p: any) => {
+    setFotoActualIndex(0); // Empezar siempre en la primera foto
+    setProductoSeleccionado(p);
   };
 
   const enlaceUnico = `${window.location.origin}/catalogo/${miId}`;
@@ -136,7 +171,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
           </div>
         </div>
 
-        <button onClick={() => { setProductoAEditar(null); setProdNombre(''); setProdDesc(''); setProdPrecio(''); setProdStock('1'); setModalProducto(true); }} className="w-full bg-amber-600 text-white p-4 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 hover:bg-amber-700 transition-colors">
+        <button onClick={() => { setProductoAEditar(null); setProdNombre(''); setProdDesc(''); setProdPrecio(''); setProdStock('1'); setProdArchivo(null); setProdArchivo2(null); setModalProducto(true); }} className="w-full bg-amber-600 text-white p-4 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 hover:bg-amber-700 transition-colors">
           <span className="text-xl leading-none">+</span> Nuevo Producto
         </button>
 
@@ -147,22 +182,28 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
             misProductos.map(p => (
               <div key={p.id} className="bg-white p-3 rounded-xl shadow-sm border border-stone-200 flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 
-                <div className="flex items-center gap-4 w-full sm:w-auto flex-1">
-                  <div className="w-16 h-16 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-100 flex items-center justify-center">
+                {/* LADO IZQUIERDO (Abre la Vista Previa) */}
+                <div 
+                  onClick={() => abrirDetalle(p)}
+                  className="flex items-center gap-4 w-full sm:w-auto flex-1 cursor-pointer group hover:bg-stone-50 p-1 -m-1 rounded-lg transition-colors"
+                  title="Ver vista previa de la vitrina"
+                >
+                  <div className="w-16 h-16 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-100 flex items-center justify-center relative">
                     {p.foto_url ? <img src={p.foto_url} className="w-full h-full object-cover" /> : <span className="text-2xl text-stone-300">📦</span>}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-bold text-stone-800 leading-tight">{p.nombre}</h3>
+                    <h3 className="font-bold text-stone-800 leading-tight group-hover:text-amber-700 transition-colors">{p.nombre}</h3>
                     <p className="text-amber-700 font-bold text-sm mt-1">${p.precio.toLocaleString('es-CL')}</p>
                   </div>
                 </div>
 
                 {/* BOTONES DE ACCIÓN: Editar y Borrar */}
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 mt-1 sm:mt-0 border-stone-100">
-                  <button onClick={() => abrirParaEditar(p)} className="px-4 py-2 bg-stone-100 rounded-lg text-stone-600 font-bold text-sm hover:bg-stone-200 transition-colors">
+                  <button onClick={(e) => abrirParaEditar(p, e)} className="px-4 py-2 bg-stone-100 rounded-lg text-stone-600 font-bold text-sm hover:bg-stone-200 transition-colors">
                     Editar
                   </button>
-                  <button onClick={() => eliminarProducto(p.id, p.nombre)} className="px-4 py-2 bg-red-50 text-red-500 rounded-lg font-bold text-sm hover:bg-red-100 transition-colors">
+                  <button onClick={(e) => eliminarProducto(p.id, p.nombre, e)} className="px-4 py-2 bg-red-50 text-red-500 rounded-lg font-bold text-sm hover:bg-red-100 transition-colors">
                     Borrar
                   </button>
                 </div>
@@ -211,10 +252,19 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                 <button onClick={() => setModalProducto(false)} className="text-stone-400 font-bold text-xl hover:text-red-500">✕</button>
               </div>
               <form onSubmit={guardarProducto} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-stone-700 mb-1">Foto {productoAEditar && '(Opcional)'}</label>
-                  <input type="file" accept="image/*" onChange={e => setProdArchivo(e.target.files ? e.target.files[0] : null)} className="w-full text-xs text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-amber-50 file:text-amber-700 file:font-bold" />
+                
+                {/* --- SECCIÓN DE 2 FOTOS --- */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-2">Foto Principal</label>
+                    <input type="file" accept="image/*" onChange={e => setProdArchivo(e.target.files ? e.target.files[0] : null)} className="w-full text-[10px] text-stone-500 file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:bg-amber-50 file:text-amber-700 file:font-bold" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-2">Foto Detalle (2)</label>
+                    <input type="file" accept="image/*" onChange={e => setProdArchivo2(e.target.files ? e.target.files[0] : null)} className="w-full text-[10px] text-stone-500 file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:bg-stone-100 file:text-stone-700 file:font-bold" />
+                  </div>
                 </div>
+
                 <div>
                   <label className="block text-sm font-bold text-stone-700 mb-1">Nombre</label>
                   <input type="text" required value={prodNombre} onChange={e => setProdNombre(e.target.value)} className="w-full p-3 border border-stone-300 rounded-lg" />
@@ -240,6 +290,78 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
             </div>
           </div>
         )}
+
+        {/* --- MODAL ELEGANTE DE VISTA PREVIA (CARRUSEL INTERACTIVO) --- */}
+        {productoSeleccionado && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-end sm:items-center p-0 sm:p-6 animate-in fade-in transition-all duration-300">
+            <div className="bg-[#FDFCF8] w-full max-w-4xl sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col sm:flex-row relative slide-up">
+              
+              <button 
+                onClick={() => setProductoSeleccionado(null)} 
+                className="absolute top-4 right-4 z-40 bg-white/50 hover:bg-white text-stone-900 w-10 h-10 rounded-full font-bold flex items-center justify-center transition-colors shadow-sm"
+              >✕</button>
+
+              <div className="w-full sm:w-1/2 bg-stone-100 flex items-center justify-center overflow-hidden aspect-square sm:aspect-auto relative group">
+                {(() => {
+                  const fotos = [productoSeleccionado.foto_url, productoSeleccionado.foto_url_2].filter(Boolean);
+                  if (fotos.length === 0) return <span className="text-7xl text-stone-300">📦</span>;
+                  
+                  return (
+                    <>
+                      <img src={fotos[fotoActualIndex]} className="w-full h-full object-cover transition-opacity duration-300" alt="Producto" />
+                      
+                      {fotos.length > 1 && (
+                        <>
+                          <button 
+                            onClick={() => setFotoActualIndex(prev => prev === 0 ? fotos.length - 1 : prev - 1)}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-stone-900 w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all z-10"
+                          >
+                            <span className="text-2xl font-bold leading-none mb-1">‹</span>
+                          </button>
+                          <button 
+                            onClick={() => setFotoActualIndex(prev => prev === fotos.length - 1 ? 0 : prev + 1)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-stone-900 w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all z-10"
+                          >
+                            <span className="text-2xl font-bold leading-none mb-1">›</span>
+                          </button>
+                          
+                          <div className="absolute bottom-4 left-0 w-full flex justify-center gap-2 z-10">
+                            {fotos.map((_, idx) => (
+                              <div key={idx} className={`w-2.5 h-2.5 rounded-full transition-colors border border-stone-400 shadow-sm ${idx === fotoActualIndex ? 'bg-white' : 'bg-black/30'}`}></div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="w-full sm:w-1/2 p-6 sm:p-10 flex flex-col bg-white overflow-y-auto max-h-[50vh] sm:max-h-full">
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-stone-800 mb-4">{productoSeleccionado.nombre}</h2>
+                <div className="w-12 h-1.5 bg-amber-700 mb-6 rounded-full"></div>
+
+                <div className="mb-8 flex-1">
+                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Detalles del Producto</h4>
+                  {productoSeleccionado.descripcion ? (
+                    <p className="text-stone-600 leading-relaxed text-sm whitespace-pre-wrap">{productoSeleccionado.descripcion}</p>
+                  ) : (
+                    <p className="text-stone-400 italic text-sm">Este producto no cuenta con descripción adicional.</p>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => alert("¡Así lo verá tu cliente! Al tocar aquí se abrirá WhatsApp.")}
+                  className="w-full mt-4 bg-[#25D366] text-white py-3.5 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 shrink-0 cursor-default opacity-90"
+                >
+                  <span className="text-xl">💬</span> Consultar Precio y Stock
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
       </div>
     </>
   );
