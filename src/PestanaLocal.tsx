@@ -7,6 +7,12 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [mensajeLocal, setMensajeLocal] = useState({ texto: '', tipo: '' });
   
+  // --- NUEVOS ESTADOS: GESTIÓN DE CATEGORÍAS ---
+  const [categorias, setCategorias] = useState<any[]>([]);
+  const [nombreNuevaCategoria, setNombreNuevaCategoria] = useState('');
+  const [categoriaAEditar, setCategoriaAEditar] = useState<any>(null);
+  const [guardandoCategoria, setGuardandoCategoria] = useState(false);
+
   // Estados para Importación
   const [cargandoExcel, setCargandoExcel] = useState(false);
   const [mensajeExcel, setMensajeExcel] = useState({ texto: '', tipo: '' });
@@ -15,13 +21,78 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
   const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
-    if (miId) cargarTelefono();
+    if (miId) {
+      cargarTelefono();
+      cargarCategorias(); // Cargamos las categorías de este local al entrar
+    }
   }, [miId]);
 
   async function cargarTelefono() {
     const { data } = await supabase.from('tiendas').select('telefono').eq('id', miId).single();
     if (data) setTelefono(data.telefono || '');
   }
+
+  // --- NUEVA FUNCIÓN: CARGAR CATEGORÍAS DEL LOCAL ---
+  async function cargarCategorias() {
+    const { data, error } = await supabase
+      .from('categorias')
+      .select('*')
+      .eq('tienda_id', miId)
+      .order('nombre');
+    
+    if (error) console.error("Error al cargar categorías:", error);
+    if (data) setCategorias(data);
+  }
+
+  // --- NUEVA FUNCIÓN: CREAR Y EDITAR CATEGORÍAS ---
+  const guardarCategoria = async (e: any) => {
+    e.preventDefault();
+    if (!nombreNuevaCategoria.trim()) return;
+    
+    setGuardandoCategoria(true);
+
+    if (categoriaAEditar) {
+      // Editar existente
+      const { error } = await supabase
+        .from('categorias')
+        .update({ nombre: nombreNuevaCategoria })
+        .eq('id', categoriaAEditar.id);
+      if (error) alert("Error al editar categoría: " + error.message);
+    } else {
+      // Crear nueva
+      const { error } = await supabase
+        .from('categorias')
+        .insert({ nombre: nombreNuevaCategoria, tienda_id: miId });
+      if (error) alert("Error al crear categoría: " + error.message);
+    }
+
+    await cargarCategorias();
+    setNombreNuevaCategoria('');
+    setCategoriaAEditar(null);
+    setGuardandoCategoria(false);
+  };
+
+  const cancelarEdicionCategoria = () => {
+    setCategoriaAEditar(null);
+    setNombreNuevaCategoria('');
+  };
+
+  const iniciarEdicionCategoria = (cat: any) => {
+    setCategoriaAEditar(cat);
+    setNombreNuevaCategoria(cat.nombre);
+  };
+
+  // --- NUEVA FUNCIÓN: ELIMINAR CATEGORÍAS ---
+  const eliminarCategoria = async (id: string, nombre: string) => {
+    const confirmar = window.confirm(`¿Seguro que deseas eliminar la categoría "${nombre}"?\n\nLos productos asociados a esta categoría quedarán sin categoría, pero NO se borrarán de tu catálogo.`);
+    if (!confirmar) return;
+
+    // Supabase se encarga de poner categoria_id en NULL en las otras tablas automáticamente
+    const { error } = await supabase.from('categorias').delete().eq('id', id);
+    
+    if (error) alert("Error al eliminar la categoría: " + error.message);
+    else await cargarCategorias();
+  };
 
   const guardarDatosLocal = async () => {
     setGuardandoLocal(true);
@@ -45,7 +116,6 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
 
-        // 1. Guardar Artesanos primero
         const hojaArtesanos = wb.Sheets['Artesano'] || wb.Sheets[wb.SheetNames[0]]; 
         if (hojaArtesanos) {
           const dataArtesanos: any[] = XLSX.utils.sheet_to_json(hojaArtesanos);
@@ -62,7 +132,6 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
           }
         }
 
-        // 2. Guardar Artículos
         const hojaArticulos = wb.Sheets['Articulo'] || wb.Sheets[wb.SheetNames[1]];
         if (hojaArticulos) {
           const dataArticulos: any[] = XLSX.utils.sheet_to_json(hojaArticulos);
@@ -102,16 +171,13 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
     reader.readAsBinaryString(file);
   };
 
-  // --- NUEVA FUNCIÓN: EXPORTAR DATOS A EXCEL ---
   const exportarExcel = async () => {
     setExportando(true);
     try {
-      // 1. Traer todos los datos de Supabase
       const { data: artesanos } = await supabase.from('artesanos').select('*').eq('tienda_id', miId);
       const { data: articulos } = await supabase.from('articulos_maestro').select('*').eq('tienda_id', miId);
       const { data: compras } = await supabase.from('registro_compras').select('*').eq('tienda_id', miId).order('fecha', { ascending: false });
 
-      // 2. Darle formato a la hoja de Historial de Compras
       const datosCompras = compras?.map(c => {
         const artesanoInfo = artesanos?.find(a => String(a.rut) === String(c.rut_artesano));
         return {
@@ -126,7 +192,6 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         };
       }) || [];
 
-      // 3. Darle formato a la hoja de Catálogo de Artículos
       const datosCatalogo = articulos?.map(art => {
         const artesanoInfo = artesanos?.find(a => String(a.rut) === String(art.rut_artesano));
         return {
@@ -138,7 +203,6 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         };
       }) || [];
 
-      // 4. Darle formato a la hoja de Artesanos (Respaldo)
       const datosArtesanos = artesanos?.map(a => ({
         'Rut': a.rut,
         'Nombre': a.nombre,
@@ -148,20 +212,17 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         'Medio pago': a.medio_pago
       })) || [];
 
-      // 5. Crear las hojas virtuales
       const hojaCompras = XLSX.utils.json_to_sheet(datosCompras);
       const hojaCatalogo = XLSX.utils.json_to_sheet(datosCatalogo);
       const hojaArtesanos = XLSX.utils.json_to_sheet(datosArtesanos);
 
-      // 6. Crear el libro de Excel y meterle las hojas
       const libroExcel = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(libroExcel, hojaCompras, "Historial Compras");
       XLSX.utils.book_append_sheet(libroExcel, hojaCatalogo, "Articulos");
       XLSX.utils.book_append_sheet(libroExcel, hojaArtesanos, "Artesanos");
 
-      // 7. Descargar el archivo con la fecha de hoy
       const fechaHoy = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
-      XLSX.writeFile(libroExcel, `Reporte_La_Cantarita_${fechaHoy}.xlsx`);
+      XLSX.writeFile(libroExcel, `Reporte_Local_${fechaHoy}.xlsx`);
 
     } catch (error) {
       console.error(error);
@@ -197,7 +258,57 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         </button>
       </div>
 
-      {/* CUADRO 2: EXPORTACIÓN DE EXCEL (NUEVO) */}
+      {/* --- NUEVO CUADRO 2: GESTIÓN DE CATEGORÍAS --- */}
+      <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-3xl">🏷️</span>
+          <div>
+            <h3 className="font-bold text-stone-800 text-lg leading-tight">Categorías de Productos</h3>
+            <p className="text-xs text-stone-500 mt-1">Administra las categorías para organizar tu catálogo. Cada local tiene su propia lista.</p>
+          </div>
+        </div>
+
+        {/* Formulario para Añadir / Editar */}
+        <form onSubmit={guardarCategoria} className="flex gap-2">
+          <input 
+            type="text" 
+            value={nombreNuevaCategoria} 
+            onChange={(e) => setNombreNuevaCategoria(e.target.value)} 
+            placeholder="Ej: Mesas, Sillas, Canastos..." 
+            className="flex-1 p-3 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-amber-700"
+            required
+          />
+          <button type="submit" disabled={guardandoCategoria} className="bg-amber-700 text-white px-4 rounded-lg font-bold text-sm hover:bg-amber-800 transition-colors whitespace-nowrap shadow-sm">
+            {guardandoCategoria ? '⏳' : (categoriaAEditar ? 'Guardar Cambios' : 'Añadir')}
+          </button>
+          {categoriaAEditar && (
+            <button type="button" onClick={cancelarEdicionCategoria} className="bg-stone-200 text-stone-600 px-3 rounded-lg text-sm font-bold hover:bg-stone-300 transition-colors">
+              ✕
+            </button>
+          )}
+        </form>
+
+        {/* Lista de Categorías */}
+        <div className="mt-4 max-h-60 overflow-y-auto pr-1 space-y-2 border-t border-stone-100 pt-4">
+          {categorias.length === 0 ? (
+            <p className="text-stone-400 text-sm text-center py-4 bg-stone-50 rounded-lg border border-dashed border-stone-200">
+              No tienes categorías creadas. Añade la primera arriba.
+            </p>
+          ) : (
+            categorias.map(cat => (
+              <div key={cat.id} className="flex items-center justify-between p-3 border border-stone-200 rounded-lg bg-stone-50 hover:border-amber-300 transition-colors">
+                <span className="font-bold text-stone-700 text-sm">{cat.nombre}</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => iniciarEdicionCategoria(cat)} className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 text-stone-500 rounded hover:bg-stone-100 transition-colors shadow-sm text-xs" title="Editar">✏️</button>
+                  <button type="button" onClick={() => eliminarCategoria(cat.id, cat.nombre)} className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 text-red-400 rounded hover:bg-red-50 transition-colors shadow-sm text-xs" title="Eliminar">🗑️</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* CUADRO 3: EXPORTACIÓN DE EXCEL */}
       <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
         <div className="flex items-center gap-3 mb-2">
           <span className="text-3xl">📥</span>
@@ -222,7 +333,7 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         </button>
       </div>
 
-      {/* CUADRO 3: CARGA DEL EXCEL MAESTRO */}
+      {/* CUADRO 4: CARGA DEL EXCEL MAESTRO */}
       <div className="bg-amber-50 p-6 rounded-xl border border-amber-200 space-y-4">
         <div className="flex items-center gap-3 mb-2">
           <span className="text-3xl">📤</span>

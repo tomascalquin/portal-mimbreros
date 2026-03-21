@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 
+const CATEGORIAS = [
+  'Terrazas y Living',
+  'Sillas',
+  'Mesas',
+  'Baúles',
+  'Canastos',
+  'Lámparas y Pantallas',
+  'Decoración',
+  'Otros',
+];
+
 export default function PestanaCompras({ miId }: any) {
   const [subPestanaCompras, setSubPestanaCompras] = useState('pedido');
   const [artesanos, setArtesanos] = useState<any[]>([]);
@@ -29,6 +40,10 @@ export default function PestanaCompras({ miId }: any) {
   // --- AQUÍ AGREGAMOS EL ESTADO PARA LA SEGUNDA FOTO ---
   const [formArtArchivo, setFormArtArchivo] = useState<File | null>(null);
   const [formArtArchivo2, setFormArtArchivo2] = useState<File | null>(null);
+  const [formArtCategoria, setFormArtCategoria] = useState('');
+  const [filtroCatGestor, setFiltroCatGestor] = useState('Todos');
+  const [filtroCatPedido, setFiltroCatPedido] = useState('Todos');
+  const [ordenPedido, setOrdenPedido] = useState<'az' | 'za' | 'precio_asc' | 'precio_desc' | ''>('');
   const [procesandoArt, setProcesandoArt] = useState(false);
 
   // --- ESTADOS: CREAR ARTESANO MANUALMENTE ---
@@ -163,8 +178,9 @@ export default function PestanaCompras({ miId }: any) {
     setFormArtCosto('');
     setFormArtDesc('');
     setFormArtStock('1');
+    setFormArtCategoria('');
     setFormArtArchivo(null);
-    setFormArtArchivo2(null); // Limpiamos la segunda foto
+    setFormArtArchivo2(null);
   };
 
   const cargarParaEditar = (art: any) => {
@@ -173,8 +189,9 @@ export default function PestanaCompras({ miId }: any) {
     setFormArtCosto(art.precio_costo.toString());
     setFormArtDesc(art.descripcion || '');
     setFormArtStock(art.stock ? art.stock.toString() : '1');
-    setFormArtArchivo(null); 
-    setFormArtArchivo2(null); // Limpiamos visualmente la segunda foto
+    setFormArtCategoria(art.categoria || '');
+    setFormArtArchivo(null);
+    setFormArtArchivo2(null);
     setMostrandoFormularioGestor(true);
   };
 
@@ -211,7 +228,8 @@ export default function PestanaCompras({ miId }: any) {
       precio_costo: parseFloat(formArtCosto) || 0,
       descripcion: formArtDesc,
       stock: parseInt(formArtStock) || 1,
-      precio_venta: 0 
+      precio_venta: 0,
+      categoria: formArtCategoria || null,
     };
 
     if (fotoUrl) datos.foto_url = fotoUrl;
@@ -258,7 +276,8 @@ export default function PestanaCompras({ miId }: any) {
       precio: precioVenta,
       stock: art.stock || 1,
       foto_url: art.foto_url || null,
-      foto_url_2: art.foto_url_2 || null // La segunda foto viaja al catálogo
+      foto_url_2: art.foto_url_2 || null,
+      categoria: art.categoria || null,
     };
 
     const { error } = await supabase.from('productos').insert(datosPublicos);
@@ -285,7 +304,7 @@ export default function PestanaCompras({ miId }: any) {
           
           <div className="flex gap-2 relative">
             <div className="relative flex-1">
-              <select value={artesanoSeleccionadoRut} onChange={(e) => { setArtesanoSeleccionadoRut(e.target.value); setCarrito({}); }} className="w-full bg-[#4A4440] text-white p-4 py-5 rounded-2xl font-bold text-lg shadow-sm appearance-none focus:outline-none">
+              <select value={artesanoSeleccionadoRut} onChange={(e) => { setArtesanoSeleccionadoRut(e.target.value); setCarrito({}); setFiltroCatPedido('Todos'); setOrdenPedido(''); }} className="w-full bg-[#4A4440] text-white p-4 py-5 rounded-2xl font-bold text-lg shadow-sm appearance-none focus:outline-none">
                 <option value="">ARTESANO (Seleccionar)</option>
                 {artesanos.map(a => <option key={a.rut} value={a.rut}>{a.nombre}</option>)}
               </select>
@@ -333,25 +352,77 @@ export default function PestanaCompras({ miId }: any) {
           <div className="space-y-3 mt-4">
             {artesanoSeleccionadoRut ? (
               articulosFiltrados.length > 0 ? (
-                articulosFiltrados.map(art => (
-                  <div key={art.id} className="bg-white rounded-2xl p-3 shadow-sm border border-stone-200 flex items-center gap-4 hover:border-amber-300 transition-colors">
-                    <div className="w-16 h-16 bg-stone-50 rounded-xl flex items-center justify-center shrink-0 border border-stone-100 overflow-hidden">
-                      {art.foto_url ? <img src={art.foto_url} className="w-full h-full object-cover" /> : <span className="text-2xl text-stone-300">📦</span>}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-stone-800 text-sm leading-tight">{art.nombre}</h3>
-                      <p className="text-[#C26B29] font-black mt-1">${art.precio_costo.toLocaleString('es-CL')}</p>
-                    </div>
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="flex items-center bg-stone-100 rounded-full p-1 border border-stone-200">
-                        <button onClick={() => cambiarCantidad(art.id, -1)} className="w-6 h-6 flex items-center justify-center font-bold text-stone-500">-</button>
-                        <span className="w-6 text-center font-bold text-xs">{carrito[art.id] || 0}</span>
-                        <button onClick={() => cambiarCantidad(art.id, 1)} className="w-6 h-6 flex items-center justify-center font-bold text-stone-500">+</button>
-                      </div>
-                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Cant</span>
-                    </div>
+                <>
+                  {/* CHIPS FILTRO CATEGORÍA + ORDEN */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => setFiltroCatPedido('Todos')}
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${filtroCatPedido === 'Todos' ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                    >
+                      Todos ({articulosFiltrados.length})
+                    </button>
+                    {CATEGORIAS.filter(cat => articulosFiltrados.some(a => a.categoria === cat)).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setFiltroCatPedido(cat)}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${filtroCatPedido === cat ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                      >
+                        {cat} ({articulosFiltrados.filter(a => a.categoria === cat).length})
+                      </button>
+                    ))}
+
+                    {/* SEPARADOR */}
+                    <div className="w-px bg-stone-200 self-stretch mx-1" />
+
+                    {/* BOTONES ORDEN */}
+                    <button
+                      onClick={() => setOrdenPedido(prev => prev === 'az' ? 'za' : 'az')}
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors flex items-center gap-1 ${ordenPedido === 'az' || ordenPedido === 'za' ? 'bg-stone-700 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                    >
+                      A-Z {ordenPedido === 'az' ? '↑' : ordenPedido === 'za' ? '↓' : ''}
+                    </button>
+                    <button
+                      onClick={() => setOrdenPedido(prev => prev === 'precio_asc' ? 'precio_desc' : 'precio_asc')}
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors flex items-center gap-1 ${ordenPedido === 'precio_asc' || ordenPedido === 'precio_desc' ? 'bg-stone-700 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                    >
+                      Precio {ordenPedido === 'precio_asc' ? '↑' : ordenPedido === 'precio_desc' ? '↓' : ''}
+                    </button>
                   </div>
-                ))
+
+                  {articulosFiltrados
+                    .filter(art => filtroCatPedido === 'Todos' || art.categoria === filtroCatPedido)
+                    .sort((a, b) => {
+                      if (ordenPedido === 'az') return a.nombre.localeCompare(b.nombre);
+                      if (ordenPedido === 'za') return b.nombre.localeCompare(a.nombre);
+                      if (ordenPedido === 'precio_asc') return a.precio_costo - b.precio_costo;
+                      if (ordenPedido === 'precio_desc') return b.precio_costo - a.precio_costo;
+                      return 0;
+                    })
+                    .map(art => (
+                    <div key={art.id} className="bg-white rounded-2xl p-3 shadow-sm border border-stone-200 flex items-center gap-4 hover:border-amber-300 transition-colors">
+                      <div className="w-16 h-16 bg-stone-50 rounded-xl flex items-center justify-center shrink-0 border border-stone-100 overflow-hidden">
+                        {art.foto_url ? <img src={art.foto_url} className="w-full h-full object-cover" /> : <span className="text-2xl text-stone-300">📦</span>}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-stone-800 text-sm leading-tight">{art.nombre}</h3>
+                        {art.categoria && (
+                          <span className="inline-block text-[9px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full mt-0.5">
+                            {art.categoria}
+                          </span>
+                        )}
+                        <p className="text-[#C26B29] font-black mt-1">${art.precio_costo.toLocaleString('es-CL')}</p>
+                      </div>
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center bg-stone-100 rounded-full p-1 border border-stone-200">
+                          <button onClick={() => cambiarCantidad(art.id, -1)} className="w-6 h-6 flex items-center justify-center font-bold text-stone-500">-</button>
+                          <span className="w-6 text-center font-bold text-xs">{carrito[art.id] || 0}</span>
+                          <button onClick={() => cambiarCantidad(art.id, 1)} className="w-6 h-6 flex items-center justify-center font-bold text-stone-500">+</button>
+                        </div>
+                        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Cant</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
               ) : (<p className="text-center py-8 text-stone-400 text-sm bg-white rounded-2xl border border-dashed border-stone-300">Este artesano no tiene productos registrados.</p>)
             ) : null}
           </div>
@@ -522,6 +593,20 @@ export default function PestanaCompras({ miId }: any) {
                     <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Nombre del Producto</label>
                     <input type="text" required value={formArtNombre} onChange={(e) => setFormArtNombre(e.target.value)} className="w-full bg-stone-50 border border-stone-300 p-3.5 rounded-xl text-base font-bold focus:outline-none focus:border-amber-600 focus:bg-white transition-colors" placeholder="Ej: Panera Ovalada" />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Seleccionar Área</label>
+                    <select
+                      value={formArtCategoria}
+                      onChange={(e) => setFormArtCategoria(e.target.value)}
+                      className="w-full bg-stone-50 border border-stone-300 p-3.5 rounded-xl text-sm font-bold text-stone-700 focus:outline-none focus:border-amber-600 focus:bg-white transition-colors"
+                    >
+                      <option value="">Sin categoría</option>
+                      {CATEGORIAS.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -549,6 +634,29 @@ export default function PestanaCompras({ miId }: any) {
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#FDFCF8] animate-in fade-in">
+                
+                {/* CHIPS DE FILTRO */}
+                <div className="flex flex-wrap gap-1.5 pb-2">
+                  <button
+                    onClick={() => setFiltroCatGestor('Todos')}
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${filtroCatGestor === 'Todos' ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                  >
+                    Todos ({articulosFiltrados.length})
+                  </button>
+                  {CATEGORIAS.map(cat => {
+                    const count = articulosFiltrados.filter(a => a.categoria === cat).length;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setFiltroCatGestor(cat)}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${filtroCatGestor === cat ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                      >
+                        {cat} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {articulosFiltrados.length === 0 ? (
                    <div className="text-center py-10">
                      <span className="text-4xl block mb-2">📋</span>
@@ -556,7 +664,9 @@ export default function PestanaCompras({ miId }: any) {
                      <p className="text-stone-400 text-xs mt-2">Cierra esta ventana y usa el botón "+ Nuevo Producto" abajo para añadir canastos.</p>
                    </div>
                 ) : (
-                  articulosFiltrados.map(art => (
+                  articulosFiltrados
+                    .filter(art => filtroCatGestor === 'Todos' || art.categoria === filtroCatGestor)
+                    .map(art => (
                     <div key={art.id} className="bg-white border border-stone-200 p-3 rounded-xl shadow-sm flex items-center justify-between group hover:border-amber-300 transition-colors">
                       
                       <div className="w-12 h-12 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-200 mr-3">
@@ -565,6 +675,11 @@ export default function PestanaCompras({ miId }: any) {
 
                       <div className="flex-1 pr-2">
                         <p className="font-bold text-stone-800 text-sm leading-tight">{art.nombre}</p>
+                        {art.categoria && (
+                          <span className="inline-block text-[9px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full mt-0.5">
+                            {art.categoria}
+                          </span>
+                        )}
                         <p className="text-amber-700 font-black text-xs mt-0.5">${art.precio_costo.toLocaleString('es-CL')}</p>
                       </div>
 
