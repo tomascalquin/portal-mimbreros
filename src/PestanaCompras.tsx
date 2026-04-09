@@ -29,6 +29,9 @@ export default function PestanaCompras({ miId }: any) {
   const [formArtCategoriaId, setFormArtCategoriaId] = useState('');
   
   const [formArtArchivo, setFormArtArchivo] = useState<File | null>(null);
+  const [formArtArchivo2, setFormArtArchivo2] = useState<File | null>(null);
+  const [prevFoto1, setPrevFoto1] = useState<string | null>(null);
+  const [prevFoto2, setPrevFoto2] = useState<string | null>(null);
   const [procesandoArt, setProcesandoArt] = useState(false);
 
   const [modalArtesano, setModalArtesano] = useState(false);
@@ -180,6 +183,9 @@ export default function PestanaCompras({ miId }: any) {
     setFormArtStock('1');
     setFormArtCategoriaId(''); 
     setFormArtArchivo(null);
+    setFormArtArchivo2(null);
+    setPrevFoto1(null);
+    setPrevFoto2(null);
   };
 
   const cargarParaEditar = (art: any) => {
@@ -190,6 +196,9 @@ export default function PestanaCompras({ miId }: any) {
     setFormArtStock(art.stock ? art.stock.toString() : '1');
     setFormArtCategoriaId(art.categoria_id || ''); 
     setFormArtArchivo(null); 
+    setFormArtArchivo2(null);
+    setPrevFoto1(art.foto_url || null);
+    setPrevFoto2(art.foto_url_2 || null);
     setMostrandoFormularioGestor(true);
   };
 
@@ -197,13 +206,27 @@ export default function PestanaCompras({ miId }: any) {
     e.preventDefault();
     setProcesandoArt(true);
     
-    let fotoUrl = artEditandoId ? articulosFiltrados.find(a => a.id === artEditandoId)?.foto_url : null;
+    const artActual = artEditandoId ? articulosMaestro.find(a => a.id === artEditandoId) : null;
+
+    // Foto 1
+    let fotoUrl: string | null = artActual?.foto_url || null;
     if (formArtArchivo) {
       const nombreArchivo = `${miId}/artesanos/${Math.random()}-${formArtArchivo.name}`;
       const { error: uploadError } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, formArtArchivo);
       if (!uploadError) {
         const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo);
         fotoUrl = data.publicUrl;
+      }
+    }
+
+    // Foto 2
+    let fotoUrl2: string | null = artActual?.foto_url_2 || null;
+    if (formArtArchivo2) {
+      const nombreArchivo2 = `${miId}/artesanos/${Math.random()}-${formArtArchivo2.name}`;
+      const { error: uploadError2 } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, formArtArchivo2);
+      if (!uploadError2) {
+        const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo2);
+        fotoUrl2 = data.publicUrl;
       }
     }
 
@@ -215,10 +238,12 @@ export default function PestanaCompras({ miId }: any) {
       descripcion: formArtDesc,
       stock: parseInt(formArtStock) || 1,
       precio_venta: 0,
-      categoria_id: formArtCategoriaId || null 
+      categoria_id: formArtCategoriaId || null,
+      // barcode/qr_code: null  ← preparado para escaneo futuro
     };
 
-    if (fotoUrl) datos.foto_url = fotoUrl;
+    if (fotoUrl !== null) datos.foto_url = fotoUrl;
+    if (fotoUrl2 !== null) datos.foto_url_2 = fotoUrl2;
 
     if (artEditandoId) {
       await supabase.from('articulos_maestro').update(datos).eq('id', artEditandoId);
@@ -253,15 +278,18 @@ export default function PestanaCompras({ miId }: any) {
 
     setProcesandoArt(true);
     
-    const datosPublicos = {
+    const datosPublicos: any = {
       tienda_id: miId,
       nombre: art.nombre,
       descripcion: art.descripcion || '',
       precio: precioVenta,
       stock: art.stock || 1,
-      foto_url: art.foto_url || null,
       categoria_id: art.categoria_id || null 
     };
+
+    // Copiar ambas fotos si existen — evita corrupción al clonar
+    if (art.foto_url) datosPublicos.foto_url = art.foto_url;
+    if (art.foto_url_2) datosPublicos.foto_url_2 = art.foto_url_2;
 
     const { error } = await supabase.from('productos').insert(datosPublicos);
     
@@ -552,14 +580,79 @@ export default function PestanaCompras({ miId }: any) {
                 <h4 className="font-black text-stone-800 text-lg mb-4">{artEditandoId ? '✏️ Actualizar Producto' : '📦 Añadir Nuevo Producto'}</h4>
 
                 <form onSubmit={guardarArticulo} className="space-y-4">
+                  {/* ── DOBLE CARGA DE FOTOS ── */}
                   <div>
-                    <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Foto (Opcional)</label>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={e => setFormArtArchivo(e.target.files ? e.target.files[0] : null)} 
-                      className="w-full text-xs text-stone-500 file:bg-amber-50 file:text-amber-700 file:border-0 file:rounded-xl file:px-4 file:py-2" 
-                    />
+                    <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Fotos del Producto (máx. 2)</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Foto 1 */}
+                      <div className="flex flex-col gap-2">
+                        <div className="w-full aspect-square rounded-xl overflow-hidden border-2 border-dashed border-stone-300 bg-stone-50 flex items-center justify-center relative">
+                          {(formArtArchivo ? URL.createObjectURL(formArtArchivo) : prevFoto1) ? (
+                            <>
+                              <img
+                                src={formArtArchivo ? URL.createObjectURL(formArtArchivo) : prevFoto1!}
+                                className="w-full h-full object-cover"
+                                alt="Foto 1"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => { setFormArtArchivo(null); setPrevFoto1(null); }}
+                                className="absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center shadow"
+                              >✕</button>
+                            </>
+                          ) : (
+                            <span className="text-stone-300 text-3xl">📷</span>
+                          )}
+                        </div>
+                        <label className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-center transition-colors">
+                          {prevFoto1 || formArtArchivo ? 'Cambiar foto 1' : '+ Foto principal'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0] || null;
+                              setFormArtArchivo(file);
+                              if (file) setPrevFoto1(null);
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {/* Foto 2 */}
+                      <div className="flex flex-col gap-2">
+                        <div className="w-full aspect-square rounded-xl overflow-hidden border-2 border-dashed border-stone-300 bg-stone-50 flex items-center justify-center relative">
+                          {(formArtArchivo2 ? URL.createObjectURL(formArtArchivo2) : prevFoto2) ? (
+                            <>
+                              <img
+                                src={formArtArchivo2 ? URL.createObjectURL(formArtArchivo2) : prevFoto2!}
+                                className="w-full h-full object-cover"
+                                alt="Foto 2"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => { setFormArtArchivo2(null); setPrevFoto2(null); }}
+                                className="absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center shadow"
+                              >✕</button>
+                            </>
+                          ) : (
+                            <span className="text-stone-300 text-3xl">📷</span>
+                          )}
+                        </div>
+                        <label className="cursor-pointer bg-stone-50 hover:bg-stone-100 text-stone-600 border border-stone-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-center transition-colors">
+                          {prevFoto2 || formArtArchivo2 ? 'Cambiar foto 2' : '+ Foto detalle'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0] || null;
+                              setFormArtArchivo2(file);
+                              if (file) setPrevFoto2(null);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Nombre del Producto</label>

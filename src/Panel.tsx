@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 import PestanaCatalogo from './PestanaCatalogo';
 import PestanaCompras from './PestanaCompras';
 import PestanaLocal from './PestanaLocal';
+import PestanaVentas from './PestanaVentas';
 
 export default function Panel() {
   const [pestana, setPestana] = useState('compras');
@@ -38,6 +39,7 @@ export default function Panel() {
       <main className="flex-1 p-4 max-w-lg mx-auto w-full mt-2">
         {pestana === 'catalogo' && <PestanaCatalogo miId={miId} nombreLocal={nombreLocal} />}
         {pestana === 'compras' && <PestanaCompras miId={miId} />}
+        {pestana === 'ventas' && <PestanaVentas miId={miId} />}
         {pestana === 'local' && <PestanaLocal miId={miId} nombreLocal={nombreLocal} setNombreLocal={setNombreLocal} />}
       </main>
 
@@ -48,6 +50,9 @@ export default function Panel() {
         </button>
         <button onClick={() => setPestana('compras')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'compras' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
           <span className="text-xl">📝</span>Compras
+        </button>
+        <button onClick={() => setPestana('ventas')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'ventas' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
+          <span className="text-xl">💰</span>Ventas
         </button>
         <button onClick={() => setPestana('local')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'local' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
           <span className="text-xl">🏪</span>Mi Local
