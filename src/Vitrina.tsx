@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from './supabase';
 
@@ -22,6 +22,12 @@ export default function Vitrina() {
 
   const [productoSeleccionado, setProductoSeleccionado] = useState<any>(null);
   const [fotoActualIndex, setFotoActualIndex] = useState(0);
+
+  // --- NUEVOS ESTADOS PARA COTIZACIÓN Y TOAST ---
+  const [carrito, setCarrito] = useState<any[]>([]);
+  const [modalCarrito, setModalCarrito] = useState(false);
+  const [toastMensaje, setToastMensaje] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
     if (tiendaId) cargarVitrina();
@@ -48,6 +54,7 @@ export default function Vitrina() {
     setCargando(false);
   }
 
+  // Función original mantenida
   const consultarPorWhatsApp = (producto: any, e?: any) => {
     if (e) e.stopPropagation();
     const telefono = tienda?.telefono;
@@ -59,27 +66,76 @@ export default function Vitrina() {
     }
 
     const telefonoLimpio = String(telefono).replace(/[^\d]/g, '');
-    const mensaje = `¡Hola! Vengo de tu vitrina virtual. Me interesa consultar por: ${nombreProducto}. ¿Me podrías confirmar el valor y si tienen stock disponible?`;
+    const mensaje = `¡Hola! Vengo de tu catalogo. Me interesa consultar por: ${nombreProducto}. ¿Me podrías confirmar el valor y si tienen stock disponible?`;
     window.location.href = `https://wa.me/569${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
   };
+
+  // --- NUEVAS FUNCIONES DE COTIZACIÓN Y TOAST ---
+  const mostrarToast = (mensaje: string) => {
+    setToastMensaje(mensaje);
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMensaje(null);
+    }, 3000);
+  };
+
+  const agregarACotizacion = (producto: any, e?: any) => {
+    if (e) e.stopPropagation();
+    
+    setCarrito(prev => {
+      const existe = prev.find(item => item.id === producto.id);
+      if (existe) {
+        return prev.map(item => 
+          item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item
+        );
+      }
+      return [...prev, { ...producto, cantidad: 1 }];
+    });
+    
+    mostrarToast(`✔️ Añadido: ${producto.nombre}`);
+  };
+
+  const ajustarCantidad = (id: string, delta: number) => {
+    setCarrito(prev => prev.map(item => {
+      if (item.id === id) {
+        const nuevaCantidad = item.cantidad + delta;
+        return { ...item, cantidad: Math.max(0, nuevaCantidad) };
+      }
+      return item;
+    }).filter(item => item.cantidad > 0));
+  };
+
+  const enviarCotizacionFinal = () => {
+    const telefono = tienda?.telefono;
+    if (!telefono) {
+      alert('Este local aún no ha configurado su número de WhatsApp.');
+      return;
+    }
+
+    let mensaje = `¡Hola! Vengo de tu vitrina virtual. Me gustaría cotizar los siguientes productos:\n\n`;
+    
+    carrito.forEach(item => {
+      mensaje += `• ${item.cantidad}x ${item.nombre}\n`;
+    });
+
+    const telefonoLimpio = String(telefono).replace(/[^\d]/g, '');
+    window.location.href = `https://wa.me/569${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
+  };
+  // ----------------------------------------------
 
   const abrirDetalle = (p: any) => {
     setFotoActualIndex(0);
     setProductoSeleccionado(p);
   };
 
-  // Categorías que tienen al menos un producto
   const categoriasConProductos = CATEGORIAS.filter(cat => productos.some(p => p.categoria === cat));
-
-  // Productos sin categoría asignada
   const sinCategoria = productos.filter(p => !p.categoria);
-
-  // Filtra según el chip activo
   const productosFiltrados = filtroActivo === 'Todos'
     ? productos
     : productos.filter(p => p.categoria === filtroActivo);
 
-  // Agrupa los productos filtrados por categoría para el render en secciones
   const productosAgrupados: { categoria: string; items: any[] }[] = [];
 
   if (filtroActivo === 'Todos') {
@@ -116,7 +172,14 @@ export default function Vitrina() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCF8] font-sans text-stone-900 pb-10">
+    <div className="min-h-screen bg-[#FDFCF8] font-sans text-stone-900 pb-10 relative">
+
+      {/* COMPONENTE TOAST FLOTANTE */}
+      {toastMensaje && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-stone-800/90 backdrop-blur-sm text-white px-6 py-3 rounded-full shadow-xl font-bold text-sm animate-in fade-in slide-in-from-top-4">
+          {toastMensaje}
+        </div>
+      )}
 
       <header className="bg-amber-800 text-white p-6 shadow-md rounded-b-[2rem] text-center mb-6">
         <p className="text-amber-200 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Catálogo Oficial</p>
@@ -154,7 +217,6 @@ export default function Vitrina() {
           <div className="space-y-10">
             {productosAgrupados.map(grupo => (
               <section key={grupo.categoria}>
-                {/* Encabezado de sección (solo visible si hay más de una sección) */}
                 {productosAgrupados.length > 1 && (
                   <div className="flex items-center gap-3 mb-4">
                     <h2 className="text-base font-bold text-amber-900 uppercase tracking-wider">{grupo.categoria}</h2>
@@ -184,10 +246,10 @@ export default function Vitrina() {
                         </h3>
 
                         <button
-                          onClick={(e) => consultarPorWhatsApp(p, e)}
-                          className="mt-auto w-full bg-[#25D366] text-white py-2.5 rounded-xl font-bold text-[10px] sm:text-xs shadow-sm hover:bg-[#128C7E] active:scale-95 transition-all flex justify-center items-center gap-1.5"
+                          onClick={(e) => agregarACotizacion(p, e)}
+                          className="mt-auto w-full bg-amber-100 text-amber-900 py-2.5 rounded-xl font-bold text-[10px] sm:text-xs shadow-sm hover:bg-amber-200 active:scale-95 transition-all flex justify-center items-center gap-1.5"
                         >
-                          <span className="text-sm">💬</span> Consultar Precio
+                          <span className="text-sm">➕</span> Añadir
                         </button>
                       </div>
                     </div>
@@ -261,14 +323,82 @@ export default function Vitrina() {
                 )}
               </div>
 
-              <button
-                onClick={() => consultarPorWhatsApp(productoSeleccionado)}
-                className="w-full mt-4 bg-[#25D366] text-white py-3.5 rounded-xl font-bold shadow-md hover:bg-[#128C7E] active:scale-95 transition-all flex justify-center items-center gap-2 shrink-0"
-              >
-                <span className="text-xl">💬</span> Consultar Precio y Stock
-              </button>
+              <div className="flex flex-col gap-2 w-full mt-4">
+                <button
+                  onClick={() => agregarACotizacion(productoSeleccionado)}
+                  className="w-full bg-amber-600 text-white py-3.5 rounded-xl font-bold shadow-md hover:bg-amber-700 active:scale-95 transition-all flex justify-center items-center gap-2 shrink-0"
+                >
+                  <span className="text-xl">➕</span> Añadir a Cotización
+                </button>
+                <button
+                  onClick={() => consultarPorWhatsApp(productoSeleccionado)}
+                  className="w-full bg-white border-2 border-[#25D366] text-[#25D366] py-3.5 rounded-xl font-bold shadow-sm hover:bg-green-50 active:scale-95 transition-all flex justify-center items-center gap-2 shrink-0"
+                >
+                  <span className="text-xl">💬</span> Consulta Directa
+                </button>
+              </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* BOTÓN FLOTANTE DEL CARRITO */}
+      {carrito.length > 0 && (
+        <button 
+          onClick={() => setModalCarrito(true)}
+          className="fixed bottom-6 right-6 z-40 bg-[#25D366] text-white p-4 rounded-2xl shadow-2xl hover:bg-[#128C7E] transition-transform hover:scale-105 flex items-center gap-3 font-bold"
+        >
+          <div className="relative">
+            <span className="text-2xl">🛒</span>
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
+              {carrito.reduce((acc, item) => acc + item.cantidad, 0)}
+            </span>
+          </div>
+          <span className="hidden sm:inline">Ver Cotización</span>
+        </button>
+      )}
+
+      {/* MODAL DEL RESUMEN DE COTIZACIÓN */}
+      {modalCarrito && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-end sm:items-center p-0 sm:p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[90vh] flex flex-col relative slide-up shadow-2xl">
+            
+            <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+              <h2 className="text-xl font-serif font-bold text-stone-800">Tu Cotización</h2>
+              <button onClick={() => setModalCarrito(false)} className="text-stone-400 hover:text-stone-800 font-bold text-xl">✕</button>
+            </div>
+
+            <div className="p-6 flex-1 overflow-y-auto space-y-4">
+              {carrito.length === 0 ? (
+                <p className="text-center text-stone-400 py-10">No has seleccionado ningún producto aún.</p>
+              ) : (
+                carrito.map(item => (
+                  <div key={item.id} className="flex justify-between items-center bg-stone-50 p-3 rounded-xl border border-stone-100">
+                    <div className="flex-1 pr-4">
+                      <p className="font-bold text-sm text-stone-800 line-clamp-2">{item.nombre}</p>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white border border-stone-200 rounded-lg p-1">
+                      <button onClick={() => ajustarCantidad(item.id, -1)} className="w-8 h-8 flex items-center justify-center text-stone-500 hover:bg-stone-100 rounded-md font-bold">-</button>
+                      <span className="w-4 text-center text-sm font-bold text-stone-800">{item.cantidad}</span>
+                      <button onClick={() => ajustarCantidad(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-stone-500 hover:bg-stone-100 rounded-md font-bold">+</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {carrito.length > 0 && (
+              <div className="p-6 border-t border-stone-100 bg-stone-50 sm:rounded-b-3xl">
+                <button
+                  onClick={enviarCotizacionFinal}
+                  className="w-full bg-[#25D366] text-white py-4 rounded-xl font-bold shadow-md hover:bg-[#128C7E] active:scale-95 transition-all flex justify-center items-center gap-2"
+                >
+                  <span className="text-xl">💬</span> Enviar por WhatsApp
+                </button>
+                <p className="text-center text-[10px] text-stone-400 mt-3 uppercase tracking-widest">El vendedor te confirmará valores y stock</p>
+              </div>
+            )}
           </div>
         </div>
       )}
