@@ -22,26 +22,51 @@ interface LineaVenta {
   origen: OrigenProducto | 'manual';
 }
 
+interface ResumenLinea {
+  nombre: string;
+  cantidad: number;
+  precio_unitario: number;
+  total: number;
+}
+
 interface ResumenDia {
   fecha: string;
   efectivo: number;
   transferencia: number;
   total: number;
   ventas: number;
+  lineasEfectivo: ResumenLinea[];
+  lineasTransferencia: ResumenLinea[];
 }
 
 const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
 
 const semanaActual = () => {
   const hoy = new Date();
-  const dia = hoy.getDay();
+  const dia = hoy.getDay(); // 0=dom
+  const diffLunes = dia === 0 ? -6 : 1 - dia;
+
+  // Trabajamos con fechas locales (YYYY-MM-DD) para no depender de UTC
+  const toLocalISO = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+
   const lunes = new Date(hoy);
-  lunes.setDate(hoy.getDate() - (dia === 0 ? 6 : dia - 1));
-  lunes.setHours(0, 0, 0, 0);
+  lunes.setDate(hoy.getDate() + diffLunes);
   const domingo = new Date(lunes);
   domingo.setDate(lunes.getDate() + 6);
-  domingo.setHours(23, 59, 59, 999);
-  return { inicio: lunes, fin: domingo };
+
+  // El filtro en Supabase: desde inicio del lunes local hasta fin del domingo local
+  // Usamos >= 'YYYY-MM-DD' y < 'YYYY-MM-DD' del lunes siguiente (más robusto que 23:59:59)
+  const lunesStr = toLocalISO(lunes);
+  const proximoLunes = new Date(domingo);
+  proximoLunes.setDate(domingo.getDate() + 1);
+  const proximoLunesStr = toLocalISO(proximoLunes);
+
+  return { inicio: lunes, fin: domingo, lunesStr, proximoLunesStr };
 };
 
 const formatFecha = (iso: string) =>
@@ -52,6 +77,112 @@ const BADGE: Record<OrigenProducto | 'manual', { label: string; cls: string }> =
   compras: { label: 'Compras',  cls: 'bg-amber-50 text-amber-700' },
   manual:  { label: 'Manual',   cls: 'bg-stone-100 text-stone-500' },
 };
+
+// ─────────────────────────────────────────────
+// SUB-COMPONENTE: Tarjeta de día expandible
+// ─────────────────────────────────────────────
+function TarjetaDia({ dia }: { dia: ResumenDia }) {
+  const [expandido, setExpandido] = useState(false);
+  const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
+
+  return (
+    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+      {/* CABECERA */}
+      <button
+        onClick={() => setExpandido(e => !e)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-stone-50 transition-colors"
+      >
+        <div>
+          <p className="font-bold text-stone-800 capitalize text-sm">{formatFecha(dia.fecha)}</p>
+          <p className="text-stone-400 text-xs mt-0.5">{dia.ventas} transacc. · toca para ver detalle</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-black text-stone-800 text-lg">{formatCLP(dia.total)}</span>
+          <span className={`text-stone-400 font-bold text-lg transition-transform ${expandido ? 'rotate-180' : ''}`}>▾</span>
+        </div>
+      </button>
+
+      {/* RESUMEN CHIPS (siempre visible) */}
+      <div className="grid grid-cols-2 gap-2 px-4 pb-3">
+        {dia.efectivo > 0 && (
+          <div className="bg-green-50 rounded-xl px-3 py-2 flex justify-between items-center">
+            <span className="text-green-700 text-xs font-bold">💵 Efectivo</span>
+            <span className="text-green-800 font-black text-xs">{formatCLP(dia.efectivo)}</span>
+          </div>
+        )}
+        {dia.transferencia > 0 && (
+          <div className="bg-blue-50 rounded-xl px-3 py-2 flex justify-between items-center">
+            <span className="text-blue-700 text-xs font-bold">🏦 Transf.</span>
+            <span className="text-blue-800 font-black text-xs">{formatCLP(dia.transferencia)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* DESGLOSE EXPANDIBLE */}
+      {expandido && (
+        <div className="border-t border-stone-100 animate-in fade-in slide-in-from-top-1">
+
+          {/* ── EFECTIVO ── */}
+          {dia.lineasEfectivo.length > 0 && (
+            <div className="px-4 pt-3 pb-2">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+                <p className="text-[10px] font-bold text-green-700 uppercase tracking-widest">💵 Efectivo</p>
+              </div>
+              <div className="space-y-1.5">
+                {dia.lineasEfectivo.map((l, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-green-50/60 rounded-lg px-3 py-2">
+                    <span className="text-xs text-green-700 font-bold w-6 text-center shrink-0">{l.cantidad}x</span>
+                    <span className="flex-1 text-xs font-semibold text-stone-700 truncate">{l.nombre}</span>
+                    <span className="text-xs font-black text-green-800 shrink-0">{formatCLP(l.total)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-center mt-2 px-1">
+                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Subtotal efectivo</span>
+                <span className="text-sm font-black text-green-700">{formatCLP(dia.efectivo)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* SEPARADOR */}
+          {dia.lineasEfectivo.length > 0 && dia.lineasTransferencia.length > 0 && (
+            <div className="mx-4 border-t border-stone-100 my-1"></div>
+          )}
+
+          {/* ── TRANSFERENCIA ── */}
+          {dia.lineasTransferencia.length > 0 && (
+            <div className="px-4 pt-2 pb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+                <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencia</p>
+              </div>
+              <div className="space-y-1.5">
+                {dia.lineasTransferencia.map((l, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-blue-50/60 rounded-lg px-3 py-2">
+                    <span className="text-xs text-blue-700 font-bold w-6 text-center shrink-0">{l.cantidad}x</span>
+                    <span className="flex-1 text-xs font-semibold text-stone-700 truncate">{l.nombre}</span>
+                    <span className="text-xs font-black text-blue-800 shrink-0">{formatCLP(l.total)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-center mt-2 px-1">
+                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Subtotal transf.</span>
+                <span className="text-sm font-black text-blue-700">{formatCLP(dia.transferencia)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* TOTAL DÍA */}
+          <div className="mx-4 mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex justify-between items-center">
+            <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Total del día</span>
+            <span className="font-black text-amber-800 text-base">{formatCLP(dia.total)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PestanaVentas({ miId }: { miId: string }) {
   const [vista, setVista] = useState<'pos' | 'resumen'>('pos');
@@ -93,9 +224,13 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
   async function cargarVentas() {
     setCargandoResumen(true);
-    const { inicio, fin } = semanaActual();
+    const { lunesStr, proximoLunesStr } = semanaActual();
+    // Filtramos por fecha local (cast a date): >= lunes y < próximo lunes
+    // Supabase soporta comparar timestamptz con strings de fecha (usa la zona del servidor),
+    // por eso usamos el cast ::date para comparar solo la parte de fecha en zona local del cliente
     const { data } = await supabase.from('ventas').select('*').eq('tienda_id', miId)
-      .gte('created_at', inicio.toISOString()).lte('created_at', fin.toISOString())
+      .gte('created_at', `${lunesStr}T00:00:00`)
+      .lt('created_at', `${proximoLunesStr}T00:00:00`)
       .order('created_at', { ascending: false });
     if (data) setVentas(data);
     setCargandoResumen(false);
@@ -162,18 +297,35 @@ export default function PestanaVentas({ miId }: { miId: string }) {
       }
     }
     await cargarCatalogos();
+    await cargarVentas(); // refrescar resumen por si ya está abierto
     setLineas([]); setGuardando(false); setExito(true);
     setTimeout(() => setExito(false), 2500);
+  };
+
+  const agruparLinea = (lista: ResumenLinea[], v: any) => {
+    const existente = lista.find(l => l.nombre === v.nombre_producto && l.precio_unitario === v.precio_unitario);
+    if (existente) {
+      existente.cantidad += v.cantidad;
+      existente.total += v.total;
+    } else {
+      lista.push({ nombre: v.nombre_producto, cantidad: v.cantidad, precio_unitario: v.precio_unitario, total: v.total });
+    }
   };
 
   const agrupadoPorDia = (): ResumenDia[] => {
     const map: Record<string, ResumenDia> = {};
     ventas.forEach(v => {
       const fecha = new Date(v.created_at).toISOString().split('T')[0];
-      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0 };
-      map[fecha].ventas++; map[fecha].total += v.total;
-      if (v.metodo_pago === 'Efectivo') map[fecha].efectivo += v.total;
-      else map[fecha].transferencia += v.total;
+      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [] };
+      map[fecha].ventas++;
+      map[fecha].total += v.total;
+      if (v.metodo_pago === 'Efectivo') {
+        map[fecha].efectivo += v.total;
+        agruparLinea(map[fecha].lineasEfectivo, v);
+      } else {
+        map[fecha].transferencia += v.total;
+        agruparLinea(map[fecha].lineasTransferencia, v);
+      }
     });
     return Object.values(map).sort((a, b) => b.fecha.localeCompare(a.fecha));
   };
@@ -187,25 +339,67 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     const { inicio, fin } = semanaActual();
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Resumen</title>
-      <style>body{font-family:Georgia,serif;max-width:620px;margin:40px auto;color:#1c1917}
-      h1{font-size:22px}table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}
-      th{text-align:left;padding:8px 10px;background:#292524;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:1px}
-      td{padding:8px 10px;border-bottom:1px solid #e7e5e4}
-      .box{margin-top:24px;background:#fef3c7;border-radius:12px;padding:16px 20px}
-      .row{display:flex;justify-content:space-between;margin-bottom:8px;font-size:14px}
-      .big{font-size:20px;font-weight:bold;border-top:2px solid #92400e;padding-top:12px;margin-top:8px}
-      @media print{body{margin:20px}}</style></head><body>
+
+    const bloqueProductos = (lineas: ResumenLinea[], color: string) => {
+      if (lineas.length === 0) return '';
+      return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
+        <thead><tr>
+          <th style="text-align:left;padding:5px 8px;background:${color};color:#fff;font-size:10px;text-transform:uppercase">Producto</th>
+          <th style="text-align:center;padding:5px 8px;background:${color};color:#fff;font-size:10px">Cant.</th>
+          <th style="text-align:right;padding:5px 8px;background:${color};color:#fff;font-size:10px">P. Unit.</th>
+          <th style="text-align:right;padding:5px 8px;background:${color};color:#fff;font-size:10px">Total</th>
+        </tr></thead>
+        <tbody>${lineas.map(l => `<tr>
+          <td style="padding:5px 8px;border-bottom:1px solid #f0eeec">${l.nombre}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f0eeec;text-align:center">${l.cantidad}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f0eeec;text-align:right">${formatCLP(l.precio_unitario)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f0eeec;text-align:right;font-weight:bold">${formatCLP(l.total)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    };
+
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Resumen Semanal</title>
+      <style>
+        body{font-family:Georgia,serif;max-width:680px;margin:40px auto;color:#1c1917}
+        h1{font-size:22px;margin-bottom:4px}
+        h2{font-size:15px;margin:20px 0 8px;padding-bottom:4px;border-bottom:2px solid #e7e5e4}
+        .metodo{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px}
+        .subtotal{display:flex;justify-content:space-between;font-size:13px;font-weight:bold;padding:6px 8px;border-radius:6px;margin-top:6px}
+        .sub-efe{background:#f0fdf4;color:#166534}
+        .sub-tra{background:#eff6ff;color:#1e40af}
+        .dia-total{display:flex;justify-content:space-between;font-size:16px;font-weight:bold;margin-top:12px;padding:10px 12px;background:#fef3c7;border-radius:8px}
+        .box{margin-top:32px;background:#292524;color:white;border-radius:12px;padding:20px}
+        .box-row{display:flex;justify-content:space-between;margin-bottom:10px;font-size:14px}
+        .box-big{display:flex;justify-content:space-between;font-size:22px;font-weight:bold;border-top:1px solid #57534e;padding-top:12px;margin-top:8px}
+        @media print{body{margin:20px}}
+      </style></head><body>
       <h1>📊 Resumen Semanal de Ventas</h1>
-      <p style="color:#78716c;font-size:12px">${inicio.toLocaleDateString('es-CL')} — ${fin.toLocaleDateString('es-CL')}</p>
-      <table><thead><tr><th>Fecha</th><th>Ventas</th><th>Efectivo</th><th>Transf.</th><th>Total</th></tr></thead><tbody>
-      ${dias.map(d => `<tr><td>${formatFecha(d.fecha)}</td><td>${d.ventas}</td><td>${formatCLP(d.efectivo)}</td><td>${formatCLP(d.transferencia)}</td><td><strong>${formatCLP(d.total)}</strong></td></tr>`).join('')}
-      </tbody></table>
+      <p style="color:#78716c;font-size:12px;margin-bottom:24px">${inicio.toLocaleDateString('es-CL')} — ${fin.toLocaleDateString('es-CL')}</p>
+
+      ${dias.map(d => `
+        <h2>${formatFecha(d.fecha)} <span style="color:#78716c;font-size:12px;font-weight:normal">(${d.ventas} transaccion${d.ventas !== 1 ? 'es' : ''})</span></h2>
+
+        ${d.lineasEfectivo.length > 0 ? `
+          <div class="metodo" style="color:#166534">💵 Efectivo</div>
+          ${bloqueProductos(d.lineasEfectivo, '#16a34a')}
+          <div class="subtotal sub-efe"><span>Subtotal Efectivo</span><span>${formatCLP(d.efectivo)}</span></div>
+        ` : ''}
+
+        ${d.lineasTransferencia.length > 0 ? `
+          <div class="metodo" style="color:#1e40af">🏦 Transferencia</div>
+          ${bloqueProductos(d.lineasTransferencia, '#2563eb')}
+          <div class="subtotal sub-tra"><span>Subtotal Transferencia</span><span>${formatCLP(d.transferencia)}</span></div>
+        ` : ''}
+
+        <div class="dia-total"><span>TOTAL DÍA</span><span>${formatCLP(d.total)}</span></div>
+      `).join('')}
+
       <div class="box">
-        <div class="row"><span>💵 Total Efectivo</span><strong>${formatCLP(totalEfectivo)}</strong></div>
-        <div class="row"><span>🏦 Total Transferencia</span><strong>${formatCLP(totalTransferencia)}</strong></div>
-        <div class="row big"><span>TOTAL SEMANA</span><span>${formatCLP(totalSemana)}</span></div>
-      </div></body></html>`);
+        <div class="box-row"><span>💵 Total Efectivo semana</span><strong>${formatCLP(totalEfectivo)}</strong></div>
+        <div class="box-row"><span>🏦 Total Transferencia semana</span><strong>${formatCLP(totalTransferencia)}</strong></div>
+        <div class="box-big"><span>TOTAL SEMANA</span><span>${formatCLP(totalSemana)}</span></div>
+      </div>
+      </body></html>`);
     w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
   };
 
@@ -214,12 +408,24 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     const { inicio, fin } = semanaActual();
     let msg = `📊 *RESUMEN SEMANAL DE VENTAS*\n_${inicio.toLocaleDateString('es-CL')} — ${fin.toLocaleDateString('es-CL')}_\n\n`;
     dias.forEach(d => {
-      msg += `📅 *${formatFecha(d.fecha)}*\n`;
-      if (d.efectivo > 0) msg += `  💵 Efectivo: ${formatCLP(d.efectivo)}\n`;
-      if (d.transferencia > 0) msg += `  🏦 Transf: ${formatCLP(d.transferencia)}\n`;
-      msg += `  Total: ${formatCLP(d.total)} (${d.ventas} venta${d.ventas !== 1 ? 's' : ''})\n\n`;
+      msg += `📅 *${formatFecha(d.fecha).toUpperCase()}*\n`;
+      if (d.lineasEfectivo.length > 0) {
+        msg += `  💵 *Efectivo*\n`;
+        d.lineasEfectivo.forEach(l => {
+          msg += `    • ${l.cantidad}x ${l.nombre} → ${formatCLP(l.total)}\n`;
+        });
+        msg += `  _Subtotal efectivo: ${formatCLP(d.efectivo)}_\n`;
+      }
+      if (d.lineasTransferencia.length > 0) {
+        msg += `  🏦 *Transferencia*\n`;
+        d.lineasTransferencia.forEach(l => {
+          msg += `    • ${l.cantidad}x ${l.nombre} → ${formatCLP(l.total)}\n`;
+        });
+        msg += `  _Subtotal transf.: ${formatCLP(d.transferencia)}_\n`;
+      }
+      msg += `  ✅ *Total día: ${formatCLP(d.total)}*\n\n`;
     });
-    msg += `━━━━━━━━━━━━━━━\n💵 Efectivo: *${formatCLP(totalEfectivo)}*\n🏦 Transferencia: *${formatCLP(totalTransferencia)}*\n✅ *TOTAL SEMANA: ${formatCLP(totalSemana)}*`;
+    msg += `━━━━━━━━━━━━━━━\n💵 Efectivo semana: *${formatCLP(totalEfectivo)}*\n🏦 Transferencia semana: *${formatCLP(totalTransferencia)}*\n\n✅ *TOTAL SEMANA: ${formatCLP(totalSemana)}*`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -502,25 +708,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             <div className="space-y-3">
               <h3 className="font-bold text-stone-500 text-sm uppercase tracking-widest">Detalle por Día</h3>
               {agrupadoPorDia().map(d => (
-                <div key={d.fecha} className="bg-white rounded-2xl border border-stone-200 shadow-sm p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <p className="font-bold text-stone-800 capitalize">{formatFecha(d.fecha)}</p>
-                      <p className="text-stone-400 text-xs">{d.ventas} venta{d.ventas !== 1 ? 's' : ''}</p>
-                    </div>
-                    <span className="font-black text-stone-800 text-lg">{formatCLP(d.total)}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-green-50 rounded-xl px-3 py-2 flex justify-between items-center">
-                      <span className="text-green-700 text-xs font-bold">💵 Efectivo</span>
-                      <span className="text-green-800 font-black text-xs">{formatCLP(d.efectivo)}</span>
-                    </div>
-                    <div className="bg-blue-50 rounded-xl px-3 py-2 flex justify-between items-center">
-                      <span className="text-blue-700 text-xs font-bold">🏦 Transf.</span>
-                      <span className="text-blue-800 font-black text-xs">{formatCLP(d.transferencia)}</span>
-                    </div>
-                  </div>
-                </div>
+                <TarjetaDia key={d.fecha} dia={d} />
               ))}
             </div>
           )}
