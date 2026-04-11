@@ -41,35 +41,85 @@ interface ResumenDia {
 
 const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
 
-// offsetSemanas: 0 = semana actual, -1 = semana pasada, -2 = hace dos semanas, etc.
-const calcularSemana = (offsetSemanas: number) => {
-  const hoy = new Date();
-  const dia = hoy.getDay();
+// ─── Zona horaria: siempre America/Santiago ─────────────────────────────────
+const TZ = 'America/Santiago';
+
+// Intl.DateTimeFormat con partes numéricas: funciona en Safari, Chrome, WebView
+const _fmtFecha = new Intl.DateTimeFormat('en', {
+  timeZone: TZ,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+// Devuelve "YYYY-MM-DD" en hora Chile para cualquier Date o string ISO
+const fechaEnSantiago = (dateOrIso: Date | string): string => {
+  const d = typeof dateOrIso === 'string' ? new Date(dateOrIso) : dateOrIso;
+  const parts = _fmtFecha.formatToParts(d);
+  const get = (t: string) => parts.find(p => p.type === t)!.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+};
+
+// "Hoy" en Santiago como "YYYY-MM-DD"
+const hoyEnSantiago = (): string => fechaEnSantiago(new Date());
+
+// Dado "YYYY-MM-DD" devuelve el lunes de esa semana como "YYYY-MM-DD"
+const lunesDe = (fechaStr: string): string => {
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  // Construir medianoche UTC+0 para ese día (evita ambigüedad de TZ)
+  const fecha = new Date(Date.UTC(y, m - 1, d));
+  const dia = fecha.getUTCDay(); // 0=dom
   const diffLunes = dia === 0 ? -6 : 1 - dia;
-
-  const lunes = new Date(hoy);
-  lunes.setDate(hoy.getDate() + diffLunes + offsetSemanas * 7);
-  lunes.setHours(0, 0, 0, 0);
-
-  const proximoLunes = new Date(lunes);
-  proximoLunes.setDate(lunes.getDate() + 7);
-  proximoLunes.setHours(0, 0, 0, 0);
-
-  const domingo = new Date(lunes);
-  domingo.setDate(lunes.getDate() + 6);
-  domingo.setHours(23, 59, 59, 999);
-
-  return { inicio: lunes, fin: domingo, proximoLunes };
+  fecha.setUTCDate(fecha.getUTCDate() + diffLunes);
+  return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth()+1).padStart(2,'0')}-${String(fecha.getUTCDate()).padStart(2,'0')}`;
 };
 
-const esDeSemana = (iso: string, offsetSemanas: number) => {
-  const { inicio, proximoLunes } = calcularSemana(offsetSemanas);
-  const fecha = new Date(iso);
-  return fecha >= inicio && fecha < proximoLunes;
+// Suma N días a "YYYY-MM-DD" → "YYYY-MM-DD"
+const sumarDias = (fechaStr: string, dias: number): string => {
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  const fecha = new Date(Date.UTC(y, m - 1, d + dias));
+  return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth()+1).padStart(2,'0')}-${String(fecha.getUTCDate()).padStart(2,'0')}`;
 };
 
-const formatFecha = (iso: string) =>
-  new Date(iso).toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+// offsetSemanas: 0=actual, -1=pasada, etc.
+const calcularSemana = (offsetSemanas: number) => {
+  const hoyStr = hoyEnSantiago();
+  const lunesStr = sumarDias(lunesDe(hoyStr), offsetSemanas * 7);
+  const domingoStr = sumarDias(lunesStr, 6);
+  const proximoLunesStr = sumarDias(lunesStr, 7);
+
+  // Date objects solo para display en la UI
+  const [ly, lm, ld] = lunesStr.split('-').map(Number);
+  const [dy, dm, dd] = domingoStr.split('-').map(Number);
+  const inicio = new Date(ly, lm - 1, ld);
+  const fin = new Date(dy, dm - 1, dd, 23, 59, 59);
+
+  return { inicio, fin, lunesStr, domingoStr, proximoLunesStr };
+};
+
+const esDeSemana = (iso: string, offsetSemanas: number): boolean => {
+  const fechaStr = fechaEnSantiago(iso);
+  const { lunesStr, proximoLunesStr } = calcularSemana(offsetSemanas);
+  return fechaStr >= lunesStr && fechaStr < proximoLunesStr;
+};
+
+const _fmtDisplay = new Intl.DateTimeFormat('es-CL', {
+  timeZone: TZ,
+  weekday: 'short', day: 'numeric', month: 'short',
+});
+
+// formatFecha acepta tanto ISO completo como "YYYY-MM-DD"
+// new Date("YYYY-MM-DD") se interpreta como UTC medianoche → día anterior en Chile
+// Por eso parseamos manualmente cuando es solo fecha
+const formatFecha = (iso: string) => {
+  let d: Date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    // Solo fecha: construir como hora local para evitar desfase UTC
+    const [y, m, day] = iso.split('-').map(Number);
+    d = new Date(y, m - 1, day, 12, 0, 0); // mediodía local, sin ambigüedad
+  } else {
+    d = new Date(iso);
+  }
+  return _fmtDisplay.format(d);
+};
 
 const BADGE: Record<OrigenProducto | 'manual', { label: string; cls: string }> = {
   vitrina: { label: 'Vitrina',  cls: 'bg-blue-50 text-blue-600' },
@@ -336,7 +386,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const agrupadoPorDia = (): ResumenDia[] => {
     const map: Record<string, ResumenDia> = {};
     ventas.forEach(v => {
-      const fecha = new Date(v.created_at).toISOString().split('T')[0];
+      const fecha = fechaEnSantiago(v.created_at); // fecha en hora Chile, no UTC
       if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [] };
       map[fecha].ventas++;
       map[fecha].total += v.total;
@@ -395,7 +445,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         @media print{body{margin:20px}}
       </style></head><body>
       <h1>📊 Resumen Semanal de Ventas</h1>
-      <p style="color:#78716c;font-size:12px;margin-bottom:24px">${inicio.toLocaleDateString('es-CL')} — ${fin.toLocaleDateString('es-CL')}</p>
+      <p style="color:#78716c;font-size:12px;margin-bottom:24px">${inicio.toLocaleDateString('es-CL', { timeZone: TZ })} — ${fin.toLocaleDateString('es-CL', { timeZone: TZ })}</p>
 
       ${dias.map(d => `
         <h2>${formatFecha(d.fecha)} <span style="color:#78716c;font-size:12px;font-weight:normal">(${d.ventas} transaccion${d.ventas !== 1 ? 'es' : ''})</span></h2>
@@ -427,7 +477,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const compartirWhatsapp = () => {
     const dias = agrupadoPorDia();
     const { inicio, fin } = calcularSemana(offsetSemana);
-    let msg = `📊 *RESUMEN SEMANAL DE VENTAS*\n_${inicio.toLocaleDateString('es-CL')} — ${fin.toLocaleDateString('es-CL')}_\n\n`;
+    let msg = `📊 *RESUMEN SEMANAL DE VENTAS*\n_${inicio.toLocaleDateString('es-CL', { timeZone: TZ })} — ${fin.toLocaleDateString('es-CL', { timeZone: TZ })}_\n\n`;
     dias.forEach(d => {
       msg += `📅 *${formatFecha(d.fecha).toUpperCase()}*\n`;
       if (d.lineasEfectivo.length > 0) {
@@ -715,7 +765,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                   <div className="text-center">
                     <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">{label}</p>
                     <p className="font-bold text-sm mt-0.5">
-                      {inicio.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })} — {fin.toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {inicio.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short' })} — {fin.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
                   <button
