@@ -37,6 +37,7 @@ interface ResumenDia {
   ventas: number;
   lineasEfectivo: ResumenLinea[];
   lineasTransferencia: ResumenLinea[];
+  ventasOriginales: any[]; // Agregado para poder editarlas individualmente
 }
 
 const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
@@ -44,13 +45,11 @@ const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
 // ─── Zona horaria: siempre America/Santiago ─────────────────────────────────
 const TZ = 'America/Santiago';
 
-// Intl.DateTimeFormat con partes numéricas: funciona en Safari, Chrome, WebView
 const _fmtFecha = new Intl.DateTimeFormat('en', {
   timeZone: TZ,
   year: 'numeric', month: '2-digit', day: '2-digit',
 });
 
-// Devuelve "YYYY-MM-DD" en hora Chile para cualquier Date o string ISO
 const fechaEnSantiago = (dateOrIso: Date | string): string => {
   const d = typeof dateOrIso === 'string' ? new Date(dateOrIso) : dateOrIso;
   const parts = _fmtFecha.formatToParts(d);
@@ -58,35 +57,29 @@ const fechaEnSantiago = (dateOrIso: Date | string): string => {
   return `${get('year')}-${get('month')}-${get('day')}`;
 };
 
-// "Hoy" en Santiago como "YYYY-MM-DD"
 const hoyEnSantiago = (): string => fechaEnSantiago(new Date());
 
-// Dado "YYYY-MM-DD" devuelve el lunes de esa semana como "YYYY-MM-DD"
 const lunesDe = (fechaStr: string): string => {
   const [y, m, d] = fechaStr.split('-').map(Number);
-  // Construir medianoche UTC+0 para ese día (evita ambigüedad de TZ)
   const fecha = new Date(Date.UTC(y, m - 1, d));
-  const dia = fecha.getUTCDay(); // 0=dom
+  const dia = fecha.getUTCDay(); 
   const diffLunes = dia === 0 ? -6 : 1 - dia;
   fecha.setUTCDate(fecha.getUTCDate() + diffLunes);
   return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth()+1).padStart(2,'0')}-${String(fecha.getUTCDate()).padStart(2,'0')}`;
 };
 
-// Suma N días a "YYYY-MM-DD" → "YYYY-MM-DD"
 const sumarDias = (fechaStr: string, dias: number): string => {
   const [y, m, d] = fechaStr.split('-').map(Number);
   const fecha = new Date(Date.UTC(y, m - 1, d + dias));
   return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth()+1).padStart(2,'0')}-${String(fecha.getUTCDate()).padStart(2,'0')}`;
 };
 
-// offsetSemanas: 0=actual, -1=pasada, etc.
 const calcularSemana = (offsetSemanas: number) => {
   const hoyStr = hoyEnSantiago();
   const lunesStr = sumarDias(lunesDe(hoyStr), offsetSemanas * 7);
   const domingoStr = sumarDias(lunesStr, 6);
   const proximoLunesStr = sumarDias(lunesStr, 7);
 
-  // Date objects solo para display en la UI
   const [ly, lm, ld] = lunesStr.split('-').map(Number);
   const [dy, dm, dd] = domingoStr.split('-').map(Number);
   const inicio = new Date(ly, lm - 1, ld);
@@ -106,15 +99,11 @@ const _fmtDisplay = new Intl.DateTimeFormat('es-CL', {
   weekday: 'short', day: 'numeric', month: 'short',
 });
 
-// formatFecha acepta tanto ISO completo como "YYYY-MM-DD"
-// new Date("YYYY-MM-DD") se interpreta como UTC medianoche → día anterior en Chile
-// Por eso parseamos manualmente cuando es solo fecha
 const formatFecha = (iso: string) => {
   let d: Date;
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    // Solo fecha: construir como hora local para evitar desfase UTC
     const [y, m, day] = iso.split('-').map(Number);
-    d = new Date(y, m - 1, day, 12, 0, 0); // mediodía local, sin ambigüedad
+    d = new Date(y, m - 1, day, 12, 0, 0); 
   } else {
     d = new Date(iso);
   }
@@ -130,7 +119,7 @@ const BADGE: Record<OrigenProducto | 'manual', { label: string; cls: string }> =
 // ─────────────────────────────────────────────
 // SUB-COMPONENTE: Tarjeta de día expandible
 // ─────────────────────────────────────────────
-function TarjetaDia({ dia }: { dia: ResumenDia }) {
+function TarjetaDia({ dia, onGestionar }: { dia: ResumenDia, onGestionar: (d: ResumenDia) => void }) {
   const [expandido, setExpandido] = useState(false);
   const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
 
@@ -142,7 +131,15 @@ function TarjetaDia({ dia }: { dia: ResumenDia }) {
         className="w-full flex items-center justify-between p-4 text-left hover:bg-stone-50 transition-colors"
       >
         <div>
-          <p className="font-bold text-stone-800 capitalize text-sm">{formatFecha(dia.fecha)}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-bold text-stone-800 capitalize text-sm">{formatFecha(dia.fecha)}</p>
+            <span 
+              onClick={(e) => { e.stopPropagation(); onGestionar(dia); }}
+              className="text-[10px] bg-stone-200 hover:bg-stone-300 text-stone-700 px-2 py-1 rounded-md transition-colors cursor-pointer"
+            >
+              ⚙️ Gestionar
+            </span>
+          </div>
           <p className="text-stone-400 text-xs mt-0.5">{dia.ventas} transacc. · toca para ver detalle</p>
         </div>
         <div className="flex items-center gap-3">
@@ -233,6 +230,122 @@ function TarjetaDia({ dia }: { dia: ResumenDia }) {
   );
 }
 
+// ─────────────────────────────────────────────
+// SUB-COMPONENTE: Modal para Gestionar Ventas de un Día
+// ─────────────────────────────────────────────
+function ModalGestionarDia({ dia, onClose, onRefresh }: { dia: ResumenDia, onClose: () => void, onRefresh: () => void }) {
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editCantidad, setEditCantidad] = useState(1);
+  const [editPrecio, setEditPrecio] = useState(0);
+  const [editMetodo, setEditMetodo] = useState<MetodoPago>('Efectivo');
+  const [editFechaHora, setEditFechaHora] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const iniciarEdicion = (v: any) => {
+    setEditandoId(v.id);
+    setEditCantidad(v.cantidad);
+    setEditPrecio(v.precio_unitario);
+    setEditMetodo(v.metodo_pago);
+    
+    // Convertir a fecha local para el input datetime-local
+    const local = new Date(v.created_at);
+    local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
+    setEditFechaHora(local.toISOString().slice(0,16));
+  };
+
+  const guardar = async (v: any) => {
+    setGuardando(true);
+    const { error } = await supabase.from('ventas').update({
+      cantidad: editCantidad,
+      precio_unitario: editPrecio,
+      total: editCantidad * editPrecio,
+      metodo_pago: editMetodo,
+      created_at: new Date(editFechaHora).toISOString()
+    }).eq('id', v.id);
+
+    setGuardando(false);
+    if (error) { alert('Error: ' + error.message); return; }
+    onRefresh();
+    onClose(); 
+  };
+
+  const eliminar = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar esta venta de forma permanente?')) return;
+    setGuardando(true);
+    const { error } = await supabase.from('ventas').delete().eq('id', id);
+    setGuardando(false);
+    if (error) { alert('Error: ' + error.message); return; }
+    onRefresh();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4">
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-800 text-white rounded-t-2xl">
+          <h3 className="font-bold">⚙️ Gestionar {formatFecha(dia.fecha)}</h3>
+          <button onClick={onClose} className="text-stone-300 hover:text-white font-bold text-xl">✕</button>
+        </div>
+        <div className="overflow-y-auto p-4 space-y-3 flex-1 bg-stone-50">
+          {dia.ventasOriginales.map((v: any) => (
+            <div key={v.id} className="bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
+              {editandoId === v.id ? (
+                <div className="space-y-2">
+                   <p className="font-bold text-sm text-stone-800">{v.nombre_producto}</p>
+                   <div className="grid grid-cols-2 gap-2">
+                     <div>
+                       <label className="text-[10px] text-stone-500 font-bold uppercase">Cant.</label>
+                       <input type="number" value={editCantidad} onChange={e => setEditCantidad(Number(e.target.value))} className="w-full border rounded-lg p-2 text-sm bg-stone-50 outline-none focus:border-amber-500" />
+                     </div>
+                     <div>
+                       <label className="text-[10px] text-stone-500 font-bold uppercase">P. Unitario</label>
+                       <input type="number" value={editPrecio} onChange={e => setEditPrecio(Number(e.target.value))} className="w-full border rounded-lg p-2 text-sm bg-stone-50 outline-none focus:border-amber-500" />
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-2 gap-2">
+                     <div>
+                       <label className="text-[10px] text-stone-500 font-bold uppercase">Método</label>
+                       <select value={editMetodo} onChange={e => setEditMetodo(e.target.value as MetodoPago)} className="w-full border rounded-lg p-2 text-sm bg-stone-50 outline-none focus:border-amber-500">
+                          <option value="Efectivo">Efectivo</option>
+                          <option value="Transferencia">Transferencia</option>
+                       </select>
+                     </div>
+                     <div>
+                       <label className="text-[10px] text-stone-500 font-bold uppercase">Fecha/Hora</label>
+                       <input type="datetime-local" value={editFechaHora} onChange={e => setEditFechaHora(e.target.value)} className="w-full border rounded-lg p-2 text-sm bg-stone-50 outline-none focus:border-amber-500" />
+                     </div>
+                   </div>
+                   <div className="flex gap-2 pt-2">
+                     <button onClick={() => guardar(v)} disabled={guardando} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg py-2 text-xs transition-colors">{guardando ? '⏳...' : '✅ Guardar'}</button>
+                     <button onClick={() => setEditandoId(null)} className="flex-1 bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold rounded-lg py-2 text-xs transition-colors">Cancelar</button>
+                   </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                   <div>
+                     <p className="font-bold text-sm text-stone-800">{v.cantidad}x {v.nombre_producto}</p>
+                     <p className="text-xs text-stone-500 font-semibold">
+                       {formatCLP(v.total)} • {v.metodo_pago === 'Efectivo' ? '💵' : '🏦'} {v.metodo_pago}
+                     </p>
+                     <p className="text-[10px] text-stone-400 mt-0.5">{new Date(v.created_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</p>
+                   </div>
+                   <div className="flex gap-2">
+                     <button onClick={() => iniciarEdicion(v)} className="bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 p-2 rounded-lg text-sm transition-colors" title="Editar">✏️</button>
+                     <button onClick={() => eliminar(v.id)} className="bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 p-2 rounded-lg text-sm transition-colors" title="Eliminar">🗑️</button>
+                   </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────
 export default function PestanaVentas({ miId }: { miId: string }) {
   const [vista, setVista] = useState<'pos' | 'resumen'>('pos');
   const [catalogoUnificado, setCatalogoUnificado] = useState<ProductoUnificado[]>([]);
@@ -243,6 +356,11 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoUnificado | null>(null);
   const [cantidad, setCantidad] = useState(1);
   const [precioVenta, setPrecioVenta] = useState('');
+  
+  // Novedad: Fecha y gestión
+  const [fechaVenta, setFechaVenta] = useState(hoyEnSantiago());
+  const [diaGestion, setDiaGestion] = useState<ResumenDia | null>(null);
+
   const [modoManual, setModoManual] = useState(false);
   const [manualNombre, setManualNombre] = useState('');
   const [manualCantidad, setManualCantidad] = useState(1);
@@ -342,9 +460,11 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const registrarVenta = async () => {
     if (lineas.length === 0) return alert('Agrega al menos un producto.');
     setGuardando(true);
+    
+    // Asignamos la fecha seleccionada por el usuario (a mediodía para evitar problemas de timezone)
+    const dateObj = new Date(`${fechaVenta}T12:00:00`);
+
     for (const linea of lineas) {
-      // producto_id solo se guarda si viene de vitrina (UUID real)
-      // articulos_maestro usa IDs custom (texto), no son UUIDs válidos para la columna
       const esUuid = linea.origen === 'vitrina' && linea.producto_id != null;
       const { error: insertError } = await supabase.from('ventas').insert({
         tienda_id: miId,
@@ -353,11 +473,12 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         precio_unitario: linea.precio_unitario,
         total: linea.cantidad * linea.precio_unitario,
         metodo_pago: metodoPago,
+        created_at: dateObj.toISOString() // <- Fecha personalizada!
       });
       if (insertError) {
         console.error('Error registrando venta:', insertError);
         setGuardando(false);
-        alert(`❌ Error al registrar la venta: ${insertError.message}\n\n¿Ejecutaste la migración SQL en Supabase?`);
+        alert(`❌ Error al registrar la venta: ${insertError.message}`);
         return;
       }
       if (linea.producto_id && linea.origen !== 'manual') {
@@ -386,10 +507,11 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const agrupadoPorDia = (): ResumenDia[] => {
     const map: Record<string, ResumenDia> = {};
     ventas.forEach(v => {
-      const fecha = fechaEnSantiago(v.created_at); // fecha en hora Chile, no UTC
-      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [] };
+      const fecha = fechaEnSantiago(v.created_at); 
+      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [], ventasOriginales: [] };
       map[fecha].ventas++;
       map[fecha].total += v.total;
+      map[fecha].ventasOriginales.push(v); // Guardamos la cruda para editar/eliminar
       if (v.metodo_pago === 'Efectivo') {
         map[fecha].efectivo += v.total;
         agruparLinea(map[fecha].lineasEfectivo, v);
@@ -442,8 +564,14 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         .box{margin-top:32px;background:#292524;color:white;border-radius:12px;padding:20px}
         .box-row{display:flex;justify-content:space-between;margin-bottom:10px;font-size:14px}
         .box-big{display:flex;justify-content:space-between;font-size:22px;font-weight:bold;border-top:1px solid #57534e;padding-top:12px;margin-top:8px}
-        @media print{body{margin:20px}}
+        @media print{ body{margin:20px} .no-print{display:none !important} }
       </style></head><body>
+      
+      <div class="no-print" style="margin-bottom:24px;display:flex;gap:12px;justify-content:center;background:#f5f5f5;padding:16px;border-radius:12px">
+        <button onclick="window.close()" style="padding:12px 24px;background:#1c1917;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:14px">← Volver a la App</button>
+        <button onclick="window.print()" style="padding:12px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:14px">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+
       <h1>📊 Resumen Semanal de Ventas</h1>
       <p style="color:#78716c;font-size:12px;margin-bottom:24px">${inicio.toLocaleDateString('es-CL', { timeZone: TZ })} — ${fin.toLocaleDateString('es-CL', { timeZone: TZ })}</p>
 
@@ -471,7 +599,9 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         <div class="box-big"><span>TOTAL SEMANA</span><span>${formatCLP(totalSemana)}</span></div>
       </div>
       </body></html>`);
-    w.document.close(); w.focus(); setTimeout(() => w.print(), 500);
+    w.document.close(); w.focus(); 
+    // Llamar impresión automáticamente pero con un retraso, así permite renderizar los botones por si el user cancela la impresion.
+    setTimeout(() => w.print(), 800);
   };
 
   const compartirWhatsapp = () => {
@@ -502,6 +632,15 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
   return (
     <div className="fade-in space-y-4">
+
+      {/* Modal para Editar/Eliminar Ventas */}
+      {diaGestion && (
+        <ModalGestionarDia 
+          dia={diaGestion} 
+          onClose={() => setDiaGestion(null)} 
+          onRefresh={() => cargarVentas(offsetSemana)} 
+        />
+      )}
 
       <div className="flex bg-stone-200 p-1.5 rounded-xl">
         <button onClick={() => setVista('pos')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${vista === 'pos' ? 'bg-white shadow text-stone-900' : 'text-stone-500'}`}>
@@ -698,19 +837,31 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             </div>
           )}
 
-          {/* MÉTODO DE PAGO */}
+          {/* MÉTODO DE PAGO Y FECHA */}
           {lineas.length > 0 && (
-            <div>
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Método de Pago</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['Efectivo', 'Transferencia'] as MetodoPago[]).map(m => (
-                  <button key={m} onClick={() => setMetodoPago(m)}
-                    className={`py-3.5 rounded-xl font-bold text-sm border-2 transition-all ${metodoPago === m
-                      ? m === 'Efectivo' ? 'bg-green-600 border-green-600 text-white' : 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300'}`}>
-                    {m === 'Efectivo' ? '💵' : '🏦'} {m}
-                  </button>
-                ))}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">📅 Fecha de la Venta</label>
+                <input
+                  type="date"
+                  value={fechaVenta}
+                  onChange={e => setFechaVenta(e.target.value)}
+                  className="w-full bg-white border border-stone-200 rounded-xl px-3 font-bold text-stone-800 focus:outline-none focus:border-amber-500 h-11"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Método de Pago</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['Efectivo', 'Transferencia'] as MetodoPago[]).map(m => (
+                    <button key={m} onClick={() => setMetodoPago(m)}
+                      className={`py-3.5 rounded-xl font-bold text-sm border-2 transition-all ${metodoPago === m
+                        ? m === 'Efectivo' ? 'bg-green-600 border-green-600 text-white' : 'bg-blue-600 border-blue-600 text-white'
+                        : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300'}`}>
+                      {m === 'Efectivo' ? '💵' : '🏦'} {m}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -812,9 +963,6 @@ export default function PestanaVentas({ miId }: { miId: string }) {
               <span className="text-2xl block">⚠️</span>
               <p className="font-bold text-red-700 text-sm">Error al cargar ventas</p>
               <p className="text-red-600 text-xs font-mono break-all">{errorVentas}</p>
-              <p className="text-red-500 text-xs mt-2">
-                Si el error dice <strong>"relation ventas does not exist"</strong>, ejecuta el archivo <strong>supabase-migration-ventas.sql</strong> en Supabase → SQL Editor.
-              </p>
               <button onClick={() => cargarVentas(offsetSemana)} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-xs">Reintentar</button>
             </div>
           ) : agrupadoPorDia().length === 0 ? (
@@ -826,7 +974,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             <div className="space-y-3">
               <h3 className="font-bold text-stone-500 text-sm uppercase tracking-widest">Detalle por Día</h3>
               {agrupadoPorDia().map(d => (
-                <TarjetaDia key={d.fecha} dia={d} />
+                <TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />
               ))}
             </div>
           )}
