@@ -44,7 +44,7 @@ export default function Panel() {
       </main>
 
       {/* MENÚ INFERIOR (NO SE IMPRIME) */}
-      <nav className="print:hidden fixed bottom-0 w-full bg-white border-t border-stone-200 flex shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40">
+      <nav className="print:hidden fixed bottom-0 w-full bg-white border-t border-stone-200 flex shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40" style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}>
         <button onClick={() => setPestana('catalogo')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'catalogo' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
           <span className="text-xl">📦</span>Catálogo
         </button>

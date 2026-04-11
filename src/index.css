@@ -1,17 +1,57 @@
 @import "tailwindcss";
 
-
 @layer base {
+  /* ── Variable global: altura total del navbar inferior ──
+     68px = altura visual del navbar (py-3 × 2 + ícono + texto)
+     env(safe-area-inset-bottom) = home indicator iPhone (0px en Android/iPhone sin notch)
+     8px = margen extra para que el botón flotante respire
+  */
+  :root {
+    --nav-h: calc(68px + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+
+  html {
+    overscroll-behavior: none;
+  }
+
   body {
-    @apply antialiased text-stone-900;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #1c1917;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Permitir selección en inputs y textareas */
+  input, textarea, [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
   }
 }
 
 .fade-in {
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.25s ease-out;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.slide-up {
+  animation: slideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0.5; }
+  to   { transform: translateY(0);    opacity: 1; }
 }

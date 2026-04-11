@@ -41,32 +41,31 @@ interface ResumenDia {
 
 const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
 
-const semanaActual = () => {
+// offsetSemanas: 0 = semana actual, -1 = semana pasada, -2 = hace dos semanas, etc.
+const calcularSemana = (offsetSemanas: number) => {
   const hoy = new Date();
-  const dia = hoy.getDay(); // 0=dom
+  const dia = hoy.getDay();
   const diffLunes = dia === 0 ? -6 : 1 - dia;
 
-  // Trabajamos con fechas locales (YYYY-MM-DD) para no depender de UTC
-  const toLocalISO = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
-  };
-
   const lunes = new Date(hoy);
-  lunes.setDate(hoy.getDate() + diffLunes);
+  lunes.setDate(hoy.getDate() + diffLunes + offsetSemanas * 7);
+  lunes.setHours(0, 0, 0, 0);
+
+  const proximoLunes = new Date(lunes);
+  proximoLunes.setDate(lunes.getDate() + 7);
+  proximoLunes.setHours(0, 0, 0, 0);
+
   const domingo = new Date(lunes);
   domingo.setDate(lunes.getDate() + 6);
+  domingo.setHours(23, 59, 59, 999);
 
-  // El filtro en Supabase: desde inicio del lunes local hasta fin del domingo local
-  // Usamos >= 'YYYY-MM-DD' y < 'YYYY-MM-DD' del lunes siguiente (más robusto que 23:59:59)
-  const lunesStr = toLocalISO(lunes);
-  const proximoLunes = new Date(domingo);
-  proximoLunes.setDate(domingo.getDate() + 1);
-  const proximoLunesStr = toLocalISO(proximoLunes);
+  return { inicio: lunes, fin: domingo, proximoLunes };
+};
 
-  return { inicio: lunes, fin: domingo, lunesStr, proximoLunesStr };
+const esDeSemana = (iso: string, offsetSemanas: number) => {
+  const { inicio, proximoLunes } = calcularSemana(offsetSemanas);
+  const fecha = new Date(iso);
+  return fecha >= inicio && fecha < proximoLunes;
 };
 
 const formatFecha = (iso: string) =>
@@ -203,10 +202,13 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const [guardando, setGuardando] = useState(false);
   const [exito, setExito] = useState(false);
   const [ventas, setVentas] = useState<any[]>([]);
+  const [todasLasVentas, setTodasLasVentas] = useState<any[]>([]);
+  const [offsetSemana, setOffsetSemana] = useState(0);
   const [cargandoResumen, setCargandoResumen] = useState(false);
+  const [errorVentas, setErrorVentas] = useState<string | null>(null);
 
   useEffect(() => { if (miId) cargarCatalogos(); }, [miId]);
-  useEffect(() => { if (vista === 'resumen') cargarVentas(); }, [vista]);
+  useEffect(() => { if (vista === 'resumen') cargarVentas(offsetSemana); }, [vista]);
 
   async function cargarCatalogos() {
     const [{ data: vitrina }, { data: compras }] = await Promise.all([
@@ -222,19 +224,28 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     setCatalogoUnificado([...vitrinaMapped, ...comprasMapped]);
   }
 
-  async function cargarVentas() {
+  async function cargarVentas(offset = 0) {
     setCargandoResumen(true);
-    const { lunesStr, proximoLunesStr } = semanaActual();
-    // Filtramos por fecha local (cast a date): >= lunes y < próximo lunes
-    // Supabase soporta comparar timestamptz con strings de fecha (usa la zona del servidor),
-    // por eso usamos el cast ::date para comparar solo la parte de fecha en zona local del cliente
-    const { data } = await supabase.from('ventas').select('*').eq('tienda_id', miId)
-      .gte('created_at', `${lunesStr}T00:00:00`)
-      .lt('created_at', `${proximoLunesStr}T00:00:00`)
-      .order('created_at', { ascending: false });
-    if (data) setVentas(data);
+    setErrorVentas(null);
+    const { data, error } = await supabase.from('ventas').select('*')
+      .eq('tienda_id', miId)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (error) {
+      console.error('Error cargarVentas:', error);
+      setErrorVentas(error.message);
+    }
+    if (data) {
+      setTodasLasVentas(data);
+      setVentas(data.filter(v => esDeSemana(v.created_at, offset)));
+    }
     setCargandoResumen(false);
   }
+
+  const cambiarSemana = (nuevoOffset: number) => {
+    setOffsetSemana(nuevoOffset);
+    setVentas(todasLasVentas.filter(v => esDeSemana(v.created_at, nuevoOffset)));
+  };
 
   const productosFiltrados = catalogoUnificado.filter(p => {
     const ok = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
@@ -282,13 +293,23 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     if (lineas.length === 0) return alert('Agrega al menos un producto.');
     setGuardando(true);
     for (const linea of lineas) {
-      await supabase.from('ventas').insert({
-        tienda_id: miId, producto_id: linea.producto_id,
+      // producto_id solo se guarda si viene de vitrina (UUID real)
+      // articulos_maestro usa IDs custom (texto), no son UUIDs válidos para la columna
+      const esUuid = linea.origen === 'vitrina' && linea.producto_id != null;
+      const { error: insertError } = await supabase.from('ventas').insert({
+        tienda_id: miId,
+        producto_id: esUuid ? linea.producto_id : null,
         nombre_producto: linea.nombre, cantidad: linea.cantidad,
         precio_unitario: linea.precio_unitario,
         total: linea.cantidad * linea.precio_unitario,
-        metodo_pago: metodoPago, origen: linea.origen,
+        metodo_pago: metodoPago,
       });
+      if (insertError) {
+        console.error('Error registrando venta:', insertError);
+        setGuardando(false);
+        alert(`❌ Error al registrar la venta: ${insertError.message}\n\n¿Ejecutaste la migración SQL en Supabase?`);
+        return;
+      }
       if (linea.producto_id && linea.origen !== 'manual') {
         const tabla = linea.origen === 'vitrina' ? 'productos' : 'articulos_maestro';
         const prod = catalogoUnificado.find(p => p.id === linea.producto_id);
@@ -297,7 +318,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
       }
     }
     await cargarCatalogos();
-    await cargarVentas(); // refrescar resumen por si ya está abierto
+    await cargarVentas(offsetSemana);
     setLineas([]); setGuardando(false); setExito(true);
     setTimeout(() => setExito(false), 2500);
   };
@@ -336,7 +357,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
   const exportarPDF = () => {
     const dias = agrupadoPorDia();
-    const { inicio, fin } = semanaActual();
+    const { inicio, fin } = calcularSemana(offsetSemana);
     const w = window.open('', '_blank');
     if (!w) return;
 
@@ -405,7 +426,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
   const compartirWhatsapp = () => {
     const dias = agrupadoPorDia();
-    const { inicio, fin } = semanaActual();
+    const { inicio, fin } = calcularSemana(offsetSemana);
     let msg = `📊 *RESUMEN SEMANAL DE VENTAS*\n_${inicio.toLocaleDateString('es-CL')} — ${fin.toLocaleDateString('es-CL')}_\n\n`;
     dias.forEach(d => {
       msg += `📅 *${formatFecha(d.fecha).toUpperCase()}*\n`;
@@ -645,7 +666,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
           )}
 
           {/* BOTÓN FLOTANTE */}
-          <div className="fixed bottom-20 left-0 w-full px-4 z-30">
+          <div className="fixed left-0 w-full px-4 z-30" style={{bottom: "var(--nav-h)"}}>
             <div className="max-w-lg mx-auto">
               {lineas.length > 0 && (
                 <div className="flex items-stretch gap-2 bg-stone-100 p-2 rounded-2xl border border-stone-300 shadow-xl">
@@ -672,12 +693,49 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
       {vista === 'resumen' && (
         <div className="space-y-4 pb-10">
+          {/* ── SELECTOR DE SEMANA ── */}
           {(() => {
-            const { inicio, fin } = semanaActual();
+            const { inicio, fin } = calcularSemana(offsetSemana);
+            const esActual = offsetSemana === 0;
+            const label = esActual
+              ? 'Semana actual'
+              : offsetSemana === -1
+              ? 'Semana pasada'
+              : `Hace ${Math.abs(offsetSemana)} semanas`;
             return (
-              <div className="bg-stone-800 text-white p-4 rounded-2xl">
-                <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest mb-0.5">Semana Actual</p>
-                <p className="font-bold text-sm">{inicio.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })} — {fin.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              <div className="bg-stone-800 text-white rounded-2xl overflow-hidden">
+                {/* Navegador */}
+                <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                  <button
+                    onClick={() => cambiarSemana(offsetSemana - 1)}
+                    className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 rounded-xl font-bold text-lg transition-colors active:scale-95"
+                  >
+                    ←
+                  </button>
+                  <div className="text-center">
+                    <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">{label}</p>
+                    <p className="font-bold text-sm mt-0.5">
+                      {inicio.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })} — {fin.toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => cambiarSemana(offsetSemana + 1)}
+                    disabled={esActual}
+                    className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-lg transition-colors active:scale-95"
+                  >
+                    →
+                  </button>
+                </div>
+                {/* Botón volver a hoy */}
+                {!esActual && (
+                  <button
+                    onClick={() => cambiarSemana(0)}
+                    className="w-full text-center text-amber-300 text-xs font-bold py-2 hover:text-amber-200 transition-colors border-t border-stone-700"
+                  >
+                    Volver a semana actual
+                  </button>
+                )}
+                {esActual && <div className="pb-2" />}
               </div>
             );
           })()}
@@ -699,6 +757,16 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
           {cargandoResumen ? (
             <p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p>
+          ) : errorVentas ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center space-y-2">
+              <span className="text-2xl block">⚠️</span>
+              <p className="font-bold text-red-700 text-sm">Error al cargar ventas</p>
+              <p className="text-red-600 text-xs font-mono break-all">{errorVentas}</p>
+              <p className="text-red-500 text-xs mt-2">
+                Si el error dice <strong>"relation ventas does not exist"</strong>, ejecuta el archivo <strong>supabase-migration-ventas.sql</strong> en Supabase → SQL Editor.
+              </p>
+              <button onClick={() => cargarVentas(offsetSemana)} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-xs">Reintentar</button>
+            </div>
           ) : agrupadoPorDia().length === 0 ? (
             <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center">
               <span className="text-3xl block mb-2">📭</span>
@@ -720,7 +788,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             <button onClick={compartirWhatsapp} className="w-full bg-[#25D366] hover:bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors">
               <span>💬</span> Compartir por WhatsApp
             </button>
-            <button onClick={cargarVentas} className="w-full bg-stone-100 text-stone-600 py-3.5 rounded-2xl font-bold text-sm hover:bg-stone-200">
+            <button onClick={() => cargarVentas(offsetSemana)} className="w-full bg-stone-100 text-stone-600 py-3.5 rounded-2xl font-bold text-sm hover:bg-stone-200">
               🔄 Actualizar datos
             </button>
           </div>

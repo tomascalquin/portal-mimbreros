@@ -450,7 +450,7 @@ export default function PestanaCompras({ miId }: any) {
             ) : null}
           </div>
 
-          <div className="fixed bottom-20 left-0 w-full px-4 z-30">
+          <div className="fixed left-0 w-full px-4 z-30" style={{bottom: "var(--nav-h)"}}>
             <div className="max-w-lg mx-auto flex items-stretch gap-2 bg-stone-100 p-2 rounded-2xl border border-stone-300 shadow-xl">
               <button 
                 onClick={abrirGestorParaNuevoDirecto} 
