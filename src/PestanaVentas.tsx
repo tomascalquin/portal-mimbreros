@@ -4,6 +4,13 @@ import { supabase } from './supabase';
 type MetodoPago = 'Efectivo' | 'Transferencia';
 type OrigenProducto = 'vitrina' | 'compras';
 
+interface EntidadBancaria {
+  id: string;
+  nombre: string;
+  numero_cuenta?: string;
+  titular?: string;
+}
+
 interface ProductoUnificado {
   id: string;
   nombre: string;
@@ -37,7 +44,8 @@ interface ResumenDia {
   ventas: number;
   lineasEfectivo: ResumenLinea[];
   lineasTransferencia: ResumenLinea[];
-  ventasOriginales: any[]; // Agregado para poder editarlas individualmente
+  desgloseBancos: Record<string, { nombre: string; total: number }>; // banco_id -> { nombre, total }
+  ventasOriginales: any[];
 }
 
 const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
@@ -216,6 +224,22 @@ function TarjetaDia({ dia, onGestionar }: { dia: ResumenDia, onGestionar: (d: Re
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Subtotal transf.</span>
                 <span className="text-sm font-black text-blue-700">{formatCLP(dia.transferencia)}</span>
               </div>
+
+              {/* Mini desglose por banco */}
+              {Object.keys(dia.desgloseBancos).length > 0 && (
+                <div className="mt-3 space-y-1.5 border-t border-blue-100 pt-3">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Desglose por cuenta</p>
+                  {Object.entries(dia.desgloseBancos).map(([key, info]) => (
+                    <div key={key} className="flex items-center justify-between bg-blue-100/60 border border-blue-200 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">🏦</span>
+                        <span className="text-xs font-bold text-blue-800">{info.nombre}</span>
+                      </div>
+                      <span className="text-xs font-black text-blue-900">{formatCLP(info.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -233,11 +257,12 @@ function TarjetaDia({ dia, onGestionar }: { dia: ResumenDia, onGestionar: (d: Re
 // ─────────────────────────────────────────────
 // SUB-COMPONENTE: Modal para Gestionar Ventas de un Día
 // ─────────────────────────────────────────────
-function ModalGestionarDia({ dia, onClose, onRefresh }: { dia: ResumenDia, onClose: () => void, onRefresh: () => void }) {
+function ModalGestionarDia({ dia, onClose, onRefresh, bancos }: { dia: ResumenDia, onClose: () => void, onRefresh: () => void, bancos: EntidadBancaria[] }) {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editCantidad, setEditCantidad] = useState(1);
   const [editPrecio, setEditPrecio] = useState(0);
   const [editMetodo, setEditMetodo] = useState<MetodoPago>('Efectivo');
+  const [editBancoId, setEditBancoId] = useState<string>('');
   const [editFechaHora, setEditFechaHora] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -246,6 +271,7 @@ function ModalGestionarDia({ dia, onClose, onRefresh }: { dia: ResumenDia, onClo
     setEditCantidad(v.cantidad);
     setEditPrecio(v.precio_unitario);
     setEditMetodo(v.metodo_pago);
+    setEditBancoId(v.banco_id || '');
     
     // Convertir a fecha local para el input datetime-local
     const local = new Date(v.created_at);
@@ -260,6 +286,7 @@ function ModalGestionarDia({ dia, onClose, onRefresh }: { dia: ResumenDia, onClo
       precio_unitario: editPrecio,
       total: editCantidad * editPrecio,
       metodo_pago: editMetodo,
+      banco_id: editMetodo === 'Transferencia' && editBancoId ? editBancoId : null,
       created_at: new Date(editFechaHora).toISOString()
     }).eq('id', v.id);
 
@@ -315,6 +342,15 @@ function ModalGestionarDia({ dia, onClose, onRefresh }: { dia: ResumenDia, onClo
                        <input type="datetime-local" value={editFechaHora} onChange={e => setEditFechaHora(e.target.value)} className="w-full border rounded-lg p-2 text-sm bg-stone-50 outline-none focus:border-amber-500" />
                      </div>
                    </div>
+                   {editMetodo === 'Transferencia' && bancos.length > 0 && (
+                     <div>
+                       <label className="text-[10px] text-stone-500 font-bold uppercase">Banco destino</label>
+                       <select value={editBancoId} onChange={e => setEditBancoId(e.target.value)} className="w-full border rounded-lg p-2 text-sm bg-stone-50 outline-none focus:border-amber-500">
+                         <option value="">Sin cuenta asignada</option>
+                         {bancos.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                       </select>
+                     </div>
+                   )}
                    <div className="flex gap-2 pt-2">
                      <button onClick={() => guardar(v)} disabled={guardando} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg py-2 text-xs transition-colors">{guardando ? '⏳...' : '✅ Guardar'}</button>
                      <button onClick={() => setEditandoId(null)} className="flex-1 bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold rounded-lg py-2 text-xs transition-colors">Cancelar</button>
@@ -326,6 +362,10 @@ function ModalGestionarDia({ dia, onClose, onRefresh }: { dia: ResumenDia, onClo
                      <p className="font-bold text-sm text-stone-800">{v.cantidad}x {v.nombre_producto}</p>
                      <p className="text-xs text-stone-500 font-semibold">
                        {formatCLP(v.total)} • {v.metodo_pago === 'Efectivo' ? '💵' : '🏦'} {v.metodo_pago}
+                       {v.metodo_pago === 'Transferencia' && v.banco_id && (() => {
+                         const b = bancos.find((b: EntidadBancaria) => b.id === v.banco_id);
+                         return b ? <span className="text-blue-600"> → {b.nombre}</span> : null;
+                       })()}
                      </p>
                      <p className="text-[10px] text-stone-400 mt-0.5">{new Date(v.created_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</p>
                    </div>
@@ -367,6 +407,8 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const [manualPrecio, setManualPrecio] = useState('');
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('Efectivo');
+  const [entidadBancariaId, setEntidadBancariaId] = useState<string>('');
+  const [bancos, setBancos] = useState<EntidadBancaria[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [exito, setExito] = useState(false);
   const [ventas, setVentas] = useState<any[]>([]);
@@ -375,8 +417,13 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const [cargandoResumen, setCargandoResumen] = useState(false);
   const [errorVentas, setErrorVentas] = useState<string | null>(null);
 
-  useEffect(() => { if (miId) cargarCatalogos(); }, [miId]);
+  useEffect(() => { if (miId) { cargarCatalogos(); cargarBancos(); } }, [miId]);
   useEffect(() => { if (vista === 'resumen') cargarVentas(offsetSemana); }, [vista]);
+
+  async function cargarBancos() {
+    const { data } = await supabase.from('entidades_bancarias').select('*').eq('tienda_id', miId).order('nombre');
+    if (data) { setBancos(data); if (data.length > 0) setEntidadBancariaId(data[0].id); }
+  }
 
   async function cargarCatalogos() {
     const [{ data: vitrina }, { data: compras }] = await Promise.all([
@@ -473,7 +520,8 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         precio_unitario: linea.precio_unitario,
         total: linea.cantidad * linea.precio_unitario,
         metodo_pago: metodoPago,
-        created_at: dateObj.toISOString() // <- Fecha personalizada!
+        banco_id: metodoPago === 'Transferencia' && entidadBancariaId ? entidadBancariaId : null,
+        created_at: dateObj.toISOString()
       });
       if (insertError) {
         console.error('Error registrando venta:', insertError);
@@ -508,16 +556,32 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     const map: Record<string, ResumenDia> = {};
     ventas.forEach(v => {
       const fecha = fechaEnSantiago(v.created_at); 
-      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [], ventasOriginales: [] };
+      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [], desgloseBancos: {}, ventasOriginales: [] };
       map[fecha].ventas++;
       map[fecha].total += v.total;
-      map[fecha].ventasOriginales.push(v); // Guardamos la cruda para editar/eliminar
+      map[fecha].ventasOriginales.push(v);
       if (v.metodo_pago === 'Efectivo') {
         map[fecha].efectivo += v.total;
         agruparLinea(map[fecha].lineasEfectivo, v);
       } else {
         map[fecha].transferencia += v.total;
         agruparLinea(map[fecha].lineasTransferencia, v);
+        // Desglose por banco
+        if (v.banco_id) {
+          const banco = bancos.find(b => b.id === v.banco_id);
+          const nombreBanco = banco?.nombre || 'Sin banco';
+          if (!map[fecha].desgloseBancos[v.banco_id]) {
+            map[fecha].desgloseBancos[v.banco_id] = { nombre: nombreBanco, total: 0 };
+          }
+          map[fecha].desgloseBancos[v.banco_id].total += v.total;
+        } else {
+          // Sin banco asignado
+          const key = '__sin_banco__';
+          if (!map[fecha].desgloseBancos[key]) {
+            map[fecha].desgloseBancos[key] = { nombre: 'Sin cuenta asignada', total: 0 };
+          }
+          map[fecha].desgloseBancos[key].total += v.total;
+        }
       }
     });
     return Object.values(map).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -638,7 +702,8 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         <ModalGestionarDia 
           dia={diaGestion} 
           onClose={() => setDiaGestion(null)} 
-          onRefresh={() => cargarVentas(offsetSemana)} 
+          onRefresh={() => cargarVentas(offsetSemana)}
+          bancos={bancos}
         />
       )}
 
@@ -862,6 +927,45 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                     </button>
                   ))}
                 </div>
+
+                {/* Selector de banco si paga por transferencia */}
+                {metodoPago === 'Transferencia' && (
+                  <div className="mt-3 animate-in fade-in slide-in-from-top-1">
+                    {bancos.length === 0 ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                        <p className="text-blue-700 font-bold text-xs">⚠️ No tienes bancos registrados.</p>
+                        <p className="text-blue-500 text-xs mt-0.5">Ve a <strong>Mi Local</strong> → <strong>Entidades Bancarias</strong> para agregar cuentas.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">¿A qué cuenta transfirió el cliente?</label>
+                        <div className="grid gap-2">
+                          {bancos.map(b => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => setEntidadBancariaId(b.id)}
+                              className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-3 ${entidadBancariaId === b.id
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'bg-white border-stone-200 text-stone-700 hover:border-blue-300'}`}
+                            >
+                              <span className="text-xl shrink-0">🏦</span>
+                              <div className="min-w-0">
+                                <p className="font-bold text-sm leading-tight">{b.nombre}</p>
+                                {(b.titular || b.numero_cuenta) && (
+                                  <p className={`text-xs mt-0.5 ${entidadBancariaId === b.id ? 'text-blue-100' : 'text-stone-400'}`}>
+                                    {b.titular}{b.titular && b.numero_cuenta ? ' · ' : ''}{b.numero_cuenta ? `Cta: ${b.numero_cuenta}` : ''}
+                                  </p>
+                                )}
+                              </div>
+                              {entidadBancariaId === b.id && <span className="ml-auto font-black text-lg shrink-0">✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -955,6 +1059,31 @@ export default function PestanaVentas({ miId }: { miId: string }) {
               <p className="font-black text-amber-800 text-base">{formatCLP(totalSemana)}</p>
             </div>
           </div>
+
+          {/* Desglose semanal por banco */}
+          {(() => {
+            const desgloseSemanalBancos: Record<string, { nombre: string; total: number }> = {};
+            ventas.filter(v => v.metodo_pago === 'Transferencia').forEach(v => {
+              const key = v.banco_id || '__sin_banco__';
+              const banco = bancos.find(b => b.id === v.banco_id);
+              const nombre = banco?.nombre || 'Sin cuenta asignada';
+              if (!desgloseSemanalBancos[key]) desgloseSemanalBancos[key] = { nombre, total: 0 };
+              desgloseSemanalBancos[key].total += v.total;
+            });
+            const entradas = Object.entries(desgloseSemanalBancos);
+            if (entradas.length === 0) return null;
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
+                <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencias por cuenta (semana)</p>
+                {entradas.map(([key, info]) => (
+                  <div key={key} className="flex justify-between items-center bg-white border border-blue-100 rounded-xl px-3 py-2">
+                    <span className="text-sm font-bold text-blue-800">{info.nombre}</span>
+                    <span className="font-black text-blue-900 text-sm">{formatCLP(info.total)}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {cargandoResumen ? (
             <p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p>

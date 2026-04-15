@@ -13,6 +13,14 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
   const [categoriaAEditar, setCategoriaAEditar] = useState<any>(null);
   const [guardandoCategoria, setGuardandoCategoria] = useState(false);
 
+  // --- ESTADOS: GESTIÓN DE ENTIDADES BANCARIAS ---
+  const [bancos, setBancos] = useState<any[]>([]);
+  const [nombreNuevoBanco, setNombreNuevoBanco] = useState('');
+  const [numeroCuentaBanco, setNumeroCuentaBanco] = useState('');
+  const [titularBanco, setTitularBanco] = useState('');
+  const [bancoAEditar, setBancoAEditar] = useState<any>(null);
+  const [guardandoBanco, setGuardandoBanco] = useState(false);
+
   // Estados para Importación
   const [cargandoExcel, setCargandoExcel] = useState(false);
   const [mensajeExcel, setMensajeExcel] = useState({ texto: '', tipo: '' });
@@ -24,6 +32,7 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
     if (miId) {
       cargarTelefono();
       cargarCategorias(); // Cargamos las categorías de este local al entrar
+      cargarBancos(); // Cargamos las entidades bancarias
     }
   }, [miId]);
 
@@ -92,6 +101,62 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
     
     if (error) alert("Error al eliminar la categoría: " + error.message);
     else await cargarCategorias();
+  };
+
+  // --- FUNCIONES: GESTIÓN DE ENTIDADES BANCARIAS ---
+  async function cargarBancos() {
+    const { data, error } = await supabase
+      .from('entidades_bancarias')
+      .select('*')
+      .eq('tienda_id', miId)
+      .order('nombre');
+    if (error) console.error("Error al cargar bancos:", error);
+    if (data) setBancos(data);
+  }
+
+  const guardarBanco = async (e: any) => {
+    e.preventDefault();
+    if (!nombreNuevoBanco.trim()) return;
+    setGuardandoBanco(true);
+    if (bancoAEditar) {
+      const { error } = await supabase.from('entidades_bancarias').update({
+        nombre: nombreNuevoBanco,
+        numero_cuenta: numeroCuentaBanco,
+        titular: titularBanco,
+      }).eq('id', bancoAEditar.id);
+      if (error) alert("Error al editar banco: " + error.message);
+    } else {
+      const { error } = await supabase.from('entidades_bancarias').insert({
+        nombre: nombreNuevoBanco,
+        numero_cuenta: numeroCuentaBanco,
+        titular: titularBanco,
+        tienda_id: miId,
+      });
+      if (error) alert("Error al crear banco: " + error.message);
+    }
+    await cargarBancos();
+    setNombreNuevoBanco(''); setNumeroCuentaBanco(''); setTitularBanco(''); setBancoAEditar(null);
+    setGuardandoBanco(false);
+  };
+
+  const cancelarEdicionBanco = () => {
+    setBancoAEditar(null);
+    setNombreNuevoBanco(''); setNumeroCuentaBanco(''); setTitularBanco('');
+  };
+
+  const iniciarEdicionBanco = (banco: any) => {
+    setBancoAEditar(banco);
+    setNombreNuevoBanco(banco.nombre);
+    setNumeroCuentaBanco(banco.numero_cuenta || '');
+    setTitularBanco(banco.titular || '');
+  };
+
+  const eliminarBanco = async (id: string, nombre: string) => {
+    const confirmar = window.confirm(`¿Seguro que deseas eliminar el banco "${nombre}"?`);
+    if (!confirmar) return;
+    const { error } = await supabase.from('entidades_bancarias').delete().eq('id', id);
+    if (error) alert("Error al eliminar banco: " + error.message);
+    else await cargarBancos();
   };
 
   const guardarDatosLocal = async () => {
@@ -308,7 +373,84 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         </div>
       </div>
 
-      {/* CUADRO 3: EXPORTACIÓN DE EXCEL */}
+      {/* --- CUADRO 3: GESTIÓN DE ENTIDADES BANCARIAS --- */}
+      <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-3xl">🏦</span>
+          <div>
+            <h3 className="font-bold text-stone-800 text-lg leading-tight">Entidades Bancarias</h3>
+            <p className="text-xs text-stone-500 mt-1">Agrega las cuentas bancarias a las que tus clientes pueden transferir. Se mostrarán al registrar ventas por transferencia.</p>
+          </div>
+        </div>
+
+        {/* Formulario Agregar / Editar */}
+        <form onSubmit={guardarBanco} className="space-y-2">
+          <input
+            type="text"
+            value={nombreNuevoBanco}
+            onChange={(e) => setNombreNuevoBanco(e.target.value)}
+            placeholder="Nombre del banco  (ej: Banco Estado, Mercado Pago...)"
+            className="w-full p-3 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-amber-700"
+            required
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={numeroCuentaBanco}
+              onChange={(e) => setNumeroCuentaBanco(e.target.value)}
+              placeholder="N° cuenta (opcional)"
+              className="p-3 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-amber-700"
+            />
+            <input
+              type="text"
+              value={titularBanco}
+              onChange={(e) => setTitularBanco(e.target.value)}
+              placeholder="Titular (opcional)"
+              className="p-3 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-amber-700"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" disabled={guardandoBanco} className="flex-1 bg-amber-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm hover:bg-amber-800 transition-colors shadow-sm">
+              {guardandoBanco ? '⏳' : (bancoAEditar ? 'Guardar Cambios' : '+ Añadir Banco')}
+            </button>
+            {bancoAEditar && (
+              <button type="button" onClick={cancelarEdicionBanco} className="bg-stone-200 text-stone-600 px-3 rounded-lg text-sm font-bold hover:bg-stone-300 transition-colors">
+                ✕ Cancelar
+              </button>
+            )}
+          </div>
+        </form>
+
+        {/* Lista de Bancos */}
+        <div className="mt-2 space-y-2 border-t border-stone-100 pt-4">
+          {bancos.length === 0 ? (
+            <p className="text-stone-400 text-sm text-center py-4 bg-stone-50 rounded-lg border border-dashed border-stone-200">
+              No tienes cuentas bancarias registradas. Añade la primera arriba.
+            </p>
+          ) : (
+            bancos.map(banco => (
+              <div key={banco.id} className="flex items-center justify-between p-3 border border-stone-200 rounded-lg bg-stone-50 hover:border-amber-300 transition-colors">
+                <div>
+                  <p className="font-bold text-stone-800 text-sm">{banco.nombre}</p>
+                  {(banco.numero_cuenta || banco.titular) && (
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      {banco.titular && <span>{banco.titular}</span>}
+                      {banco.titular && banco.numero_cuenta && <span className="mx-1">·</span>}
+                      {banco.numero_cuenta && <span>Cta: {banco.numero_cuenta}</span>}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => iniciarEdicionBanco(banco)} className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 text-stone-500 rounded hover:bg-stone-100 transition-colors shadow-sm text-xs" title="Editar">✏️</button>
+                  <button type="button" onClick={() => eliminarBanco(banco.id, banco.nombre)} className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 text-red-400 rounded hover:bg-red-50 transition-colors shadow-sm text-xs" title="Eliminar">🗑️</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* CUADRO 4: EXPORTACIÓN DE EXCEL */}
       <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
         <div className="flex items-center gap-3 mb-2">
           <span className="text-3xl">📥</span>
@@ -333,7 +475,7 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         </button>
       </div>
 
-      {/* CUADRO 4: CARGA DEL EXCEL MAESTRO */}
+      {/* CUADRO 5: CARGA DEL EXCEL MAESTRO */}
       <div className="bg-amber-50 p-6 rounded-xl border border-amber-200 space-y-4">
         <div className="flex items-center gap-3 mb-2">
           <span className="text-3xl">📤</span>
