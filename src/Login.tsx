@@ -5,7 +5,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [cargando, setCargando] = useState(false);
-  // Controlamos en qué pantalla estamos: 'login', 'registro' o 'recuperar'
+  // Controlamos en qué pantalla estamos: 'login' o 'recuperar' (Se eliminó 'registro')
   const [modo, setModo] = useState('login'); 
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
@@ -15,12 +15,7 @@ export default function Login() {
     setMensaje({ texto: '', tipo: '' });
 
     try {
-      if (modo === 'registro') {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        setMensaje({ texto: '¡Cuenta creada! Revisa tu correo para confirmar.', tipo: 'exito' });
-        
-      } else if (modo === 'recuperar') {
+      if (modo === 'recuperar') {
         // Lógica real para enviar correo de recuperación
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/actualizar-password`,
@@ -35,7 +30,6 @@ export default function Login() {
     } catch (error: any) {
       let errorTexto = error.message;
       if (errorTexto.includes('Invalid login credentials')) errorTexto = 'Correo o contraseña incorrectos.';
-      if (errorTexto.includes('User already registered')) errorTexto = 'Este correo ya tiene una cuenta.';
       if (errorTexto.includes('Password should be at least')) errorTexto = 'La contraseña debe tener al menos 6 caracteres.';
       setMensaje({ texto: errorTexto, tipo: 'error' });
     } finally {
@@ -91,7 +85,7 @@ export default function Login() {
           )}
 
           <button type="submit" disabled={cargando} className="w-full bg-amber-800 text-white py-4 rounded-2xl font-bold shadow-lg shadow-amber-900/20 hover:bg-amber-900 active:scale-95 transition-all disabled:opacity-70 mt-4">
-            {cargando ? 'Cargando...' : modo === 'registro' ? 'Crear mi cuenta' : modo === 'recuperar' ? 'Enviar correo de recuperación' : 'Entrar a mi Taller'}
+            {cargando ? 'Cargando...' : modo === 'recuperar' ? 'Enviar correo de recuperación' : 'Entrar a mi Taller'}
           </button>
         </form>
 
@@ -101,11 +95,7 @@ export default function Login() {
               Volver a iniciar sesión
             </button>
           )}
-          {modo === 'login' && (
-            <button type="button" onClick={() => { setModo('registro'); setMensaje({ texto: '', tipo: '' }); }} className="text-sm font-bold text-stone-400 hover:text-amber-800 transition-colors">
-              ¿Eres nuevo? Crea tu cuenta aquí
-            </button>
-          )}
+          {/* Aquí eliminamos el botón de crear cuenta */}
         </div>
 
       </div>

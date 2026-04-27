@@ -42,10 +42,11 @@ function App() {
         
         {/* NUEVA RUTA: La página donde aterrizan desde el correo */}
         <Route path="/actualizar-password" element={<ActualizarPassword />} />
-        <Route path="/" element={<Navigate to="/admin" replace />} />
+        {/* La raíz lleva directo al catálogo de Jorge */}
+        <Route path="/" element={<Navigate to="/catalogo/e552b6a3-16ef-4998-be48-4577c976355a" replace />} />
         
         <Route path="/admin" element={sesion ? <Panel /> : <Login />} />
-        <Route path="*" element={<Navigate to="/admin" />} />
+        <Route path="*" element={<Navigate to="/catalogo/e552b6a3-16ef-4998-be48-4577c976355a" />} />
       </Routes>
     </BrowserRouter>
   );
