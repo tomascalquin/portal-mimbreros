@@ -2,21 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from './supabase';
 
-const CATEGORIAS = [
-  'Terrazas y Living',
-  'Sillas',
-  'Mesas',
-  'Baúles',
-  'Canastos',
-  'Lámparas y Pantallas',
-  'Decoración',
-  'Otros',
-];
-
 export default function Vitrina() {
   const { tiendaId } = useParams();
   const [tienda, setTienda] = useState<any>(null);
   const [productos, setProductos] = useState<any[]>([]);
+  const [categorias, setCategorias] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
   const [filtroActivo, setFiltroActivo] = useState<string>('Todos');
 
@@ -52,6 +42,12 @@ export default function Vitrina() {
       .from('productos').select('*').eq('tienda_id', tiendaId);
     if (errorProductos) console.error('Error al buscar productos:', errorProductos.message);
     if (dataProductos) setProductos(dataProductos);
+
+    // Cargar categorías dinámicas desde la DB
+    const { data: dataCategorias, error: errorCategorias } = await supabase
+      .from('categorias').select('*').eq('tienda_id', tiendaId).order('nombre');
+    if (errorCategorias) console.error('Error al buscar categorías:', errorCategorias.message);
+    if (dataCategorias) setCategorias(dataCategorias);
 
     setCargando(false);
   }
@@ -117,6 +113,7 @@ export default function Vitrina() {
     setProductoSeleccionado(p);
   };
 
+  // Filtro por búsqueda de texto
   const productosFiltradosPorBusqueda = busqueda.trim()
     ? productos.filter(p =>
         p.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -124,20 +121,31 @@ export default function Vitrina() {
       )
     : productos;
 
-  const categoriasConProductos = CATEGORIAS.filter(cat => productosFiltradosPorBusqueda.some(p => p.categoria === cat));
-  const sinCategoria = productosFiltradosPorBusqueda.filter(p => !p.categoria);
-  const productosAgrupados: { categoria: string; items: any[] }[] = [];
+  // Agrupa productos por categoria_id (UUID) usando las categorías cargadas desde la DB
+  const categoriasConProductos = categorias.filter(cat =>
+    productosFiltradosPorBusqueda.some(p => p.categoria_id === cat.id)
+  );
+  const sinCategoria = productosFiltradosPorBusqueda.filter(p => !p.categoria_id);
+
+  const productosAgrupados: { categoriaId: string; categoriaNombre: string; items: any[] }[] = [];
 
   if (filtroActivo === 'Todos') {
     categoriasConProductos.forEach(cat => {
-      const items = productosFiltradosPorBusqueda.filter(p => p.categoria === cat);
-      if (items.length > 0) productosAgrupados.push({ categoria: cat, items });
+      const items = productosFiltradosPorBusqueda.filter(p => p.categoria_id === cat.id);
+      if (items.length > 0) productosAgrupados.push({ categoriaId: cat.id, categoriaNombre: cat.nombre, items });
     });
-    if (sinCategoria.length > 0) productosAgrupados.push({ categoria: 'Otros productos', items: sinCategoria });
+    if (sinCategoria.length > 0) productosAgrupados.push({ categoriaId: '__sin_categoria__', categoriaNombre: 'Otros productos', items: sinCategoria });
   } else {
-    const items = productosFiltradosPorBusqueda.filter(p => p.categoria === filtroActivo);
-    productosAgrupados.push({ categoria: filtroActivo, items });
+    const items = productosFiltradosPorBusqueda.filter(p => p.categoria_id === filtroActivo);
+    const cat = categorias.find(c => c.id === filtroActivo);
+    productosAgrupados.push({ categoriaId: filtroActivo, categoriaNombre: cat?.nombre || filtroActivo, items });
   }
+
+  // Obtiene el nombre de categoría para mostrar en el detalle del producto
+  const getNombreCategoria = (producto: any) => {
+    if (!producto.categoria_id) return null;
+    return categorias.find(c => c.id === producto.categoria_id)?.nombre || null;
+  };
 
   if (cargando) {
     return (
@@ -194,7 +202,7 @@ export default function Vitrina() {
         <h1 className="text-2xl font-serif italic font-bold">{tienda.nombre_local || 'Mi Vitrina'}</h1>
         <a
           href="/admin"
-          className="absolute top-4 right-4 flex items-center gap-1.5 bg-amber-900/60 hover:bg-amber-900 active:scale-95 backdrop-blur-sm text-amber-100 text-[11px] font-bold px-3 py-1.5 rounded-full border border-amber-600/40 shadow-sm transition-all"
+          className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-amber-900/60 hover:bg-amber-900 active:scale-95 backdrop-blur-sm text-amber-100 text-[11px] font-bold px-3 py-1.5 rounded-full border border-amber-600/40 shadow-sm transition-all"
         >
           <span className="text-sm">🔐</span>
           <span className="hidden sm:inline">Iniciar sesión</span>
@@ -221,26 +229,28 @@ export default function Vitrina() {
           )}
         </div>
 
-        {/* FILTROS */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <button
-            onClick={() => setFiltroActivo('Todos')}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filtroActivo === 'Todos' ? 'bg-amber-700 text-white shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:border-amber-400'}`}
-          >
-            Todo ({productosFiltradosPorBusqueda.length})
-          </button>
-          {CATEGORIAS.map(cat => {
-            const count = productosFiltradosPorBusqueda.filter(p => p.categoria === cat).length;
-            if (count === 0 && busqueda) return null;
-            return (
-              <button key={cat} onClick={() => setFiltroActivo(cat)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filtroActivo === cat ? 'bg-amber-700 text-white shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:border-amber-400'}`}
-              >
-                {cat} ({count})
-              </button>
-            );
-          })}
-        </div>
+        {/* FILTROS — generados dinámicamente desde las categorías de la DB */}
+        {categorias.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setFiltroActivo('Todos')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filtroActivo === 'Todos' ? 'bg-amber-700 text-white shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:border-amber-400'}`}
+            >
+              Todo ({productosFiltradosPorBusqueda.length})
+            </button>
+            {categorias.map(cat => {
+              const count = productosFiltradosPorBusqueda.filter(p => p.categoria_id === cat.id).length;
+              if (count === 0) return null;
+              return (
+                <button key={cat.id} onClick={() => setFiltroActivo(cat.id)}
+                  className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filtroActivo === cat.id ? 'bg-amber-700 text-white shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:border-amber-400'}`}
+                >
+                  {cat.nombre} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {busqueda && (
           <p className="text-xs text-stone-400 font-medium mb-4">
@@ -261,10 +271,10 @@ export default function Vitrina() {
         ) : (
           <div className="space-y-10">
             {productosAgrupados.filter(g => g.items.length > 0).map(grupo => (
-              <section key={grupo.categoria}>
+              <section key={grupo.categoriaId}>
                 {productosAgrupados.filter(g => g.items.length > 0).length > 1 && (
                   <div className="flex items-center gap-3 mb-4">
-                    <h2 className="text-base font-bold text-amber-900 uppercase tracking-wider">{grupo.categoria}</h2>
+                    <h2 className="text-base font-bold text-amber-900 uppercase tracking-wider">{grupo.categoriaNombre}</h2>
                     <div className="flex-1 h-px bg-amber-200"></div>
                     <span className="text-xs text-stone-400 font-medium">{grupo.items.length} producto{grupo.items.length !== 1 ? 's' : ''}</span>
                   </div>
@@ -309,7 +319,6 @@ export default function Vitrina() {
               className="absolute top-4 right-4 z-40 bg-white/50 hover:bg-white text-stone-900 w-10 h-10 rounded-full font-bold flex items-center justify-center transition-colors shadow-sm"
             >✕</button>
 
-            {/* Botón compartir */}
             <button onClick={(e) => compartirProducto(productoSeleccionado, e)}
               className="absolute top-4 left-4 z-40 bg-white/50 hover:bg-white text-stone-500 hover:text-stone-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm text-base"
               title="Compartir"
@@ -320,7 +329,6 @@ export default function Vitrina() {
               </svg>
             </button>
 
-            {/* FOTO con fullscreen */}
             <div className="w-full sm:w-1/2 bg-stone-100 flex items-center justify-center overflow-hidden aspect-square sm:aspect-auto relative group">
               {(() => {
                 const fotos = [productoSeleccionado.foto_url, productoSeleccionado.foto_url_2].filter(Boolean);
@@ -357,9 +365,9 @@ export default function Vitrina() {
             </div>
 
             <div className="w-full sm:w-1/2 p-6 sm:p-10 flex flex-col bg-white overflow-y-auto max-h-[50vh] sm:max-h-full">
-              {productoSeleccionado.categoria && (
+              {getNombreCategoria(productoSeleccionado) && (
                 <span className="inline-block text-[10px] font-bold uppercase tracking-widest text-amber-700 bg-amber-50 px-3 py-1 rounded-full mb-3 self-start">
-                  {productoSeleccionado.categoria}
+                  {getNombreCategoria(productoSeleccionado)}
                 </span>
               )}
               <h2 className="text-2xl sm:text-3xl font-serif font-bold text-stone-800 mb-4">{productoSeleccionado.nombre}</h2>

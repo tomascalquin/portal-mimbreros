@@ -10,20 +10,23 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const [vista, setVista] = useState<'pos' | 'resumen'>('pos');
   const [busqueda, setBusqueda] = useState('');
   const [filtroOrigen, setFiltroOrigen] = useState<'todos' | OrigenProducto>('todos');
-  const [mostrarSelector, setMostrarSelector] = useState(false);
   const buscadorRef = useRef<HTMLInputElement>(null);
-  const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoUnificado | null>(null);
-  const [cantidad, setCantidad] = useState(1);
-  const [precioVenta, setPrecioVenta] = useState('');
-  const [fechaVenta, setFechaVenta] = useState(hoyEnSantiago());
-  const [diaGestion, setDiaGestion] = useState<ResumenDia | null>(null);
-  const [modoManual, setModoManual] = useState(false);
+
+  // Popup de confirmación al tocar un producto
+  const [popup, setPopup] = useState<{ producto: ProductoUnificado; cantidad: number; precio: string } | null>(null);
+
+  // Modal ingreso manual
+  const [mostrarManual, setMostrarManual] = useState(false);
   const [manualNombre, setManualNombre] = useState('');
   const [manualCantidad, setManualCantidad] = useState(1);
   const [manualPrecio, setManualPrecio] = useState('');
+
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
+  const [verTicket, setVerTicket] = useState(false);
+  const [fechaVenta, setFechaVenta] = useState(hoyEnSantiago());
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('Efectivo');
   const [entidadBancariaId, setEntidadBancariaId] = useState<string>('');
+  const [diaGestion, setDiaGestion] = useState<ResumenDia | null>(null);
 
   const {
     catalogoUnificado, bancos, ventas, offsetSemana,
@@ -40,26 +43,25 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     return ok && (filtroOrigen === 'todos' || p.origen === filtroOrigen);
   });
 
-  const seleccionarProducto = (p: ProductoUnificado) => {
-    setProductoSeleccionado(p);
-    setPrecioVenta(p.precio.toString());
-    setCantidad(1);
-    setMostrarSelector(false);
-    setBusqueda('');
+  // Tocar producto → abrir popup
+  const tocarProducto = (p: ProductoUnificado) => {
+    setPopup({ producto: p, cantidad: 1, precio: p.precio.toString() });
   };
 
-  const agregarDesdeCatalogo = () => {
-    if (!productoSeleccionado) return;
-    const precio = parseFloat(precioVenta) || 0;
+  // Confirmar desde popup → agregar al ticket
+  const confirmarPopup = () => {
+    if (!popup) return;
+    const precio = parseFloat(popup.precio) || 0;
     if (precio <= 0) return alert('Ingresa un precio válido.');
     setLineas(prev => [...prev, {
-      producto_id: productoSeleccionado.id,
-      nombre: productoSeleccionado.nombre,
-      cantidad, precio_unitario: precio,
-      foto_url: productoSeleccionado.foto_url,
-      origen: productoSeleccionado.origen,
+      producto_id: popup.producto.id,
+      nombre: popup.producto.nombre,
+      cantidad: popup.cantidad,
+      precio_unitario: precio,
+      foto_url: popup.producto.foto_url,
+      origen: popup.producto.origen,
     }]);
-    setProductoSeleccionado(null); setPrecioVenta(''); setCantidad(1);
+    setPopup(null);
   };
 
   const agregarManual = () => {
@@ -67,15 +69,24 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     const precio = parseFloat(manualPrecio) || 0;
     if (precio <= 0) return alert('Ingresa un precio válido.');
     setLineas(prev => [...prev, {
-      producto_id: null, nombre: manualNombre.trim(),
-      cantidad: manualCantidad, precio_unitario: precio,
-      foto_url: null, origen: 'manual',
+      producto_id: null,
+      nombre: manualNombre.trim(),
+      cantidad: manualCantidad,
+      precio_unitario: precio,
+      foto_url: null,
+      origen: 'manual',
     }]);
-    setManualNombre(''); setManualCantidad(1); setManualPrecio(''); setModoManual(false);
+    setManualNombre(''); setManualCantidad(1); setManualPrecio('');
+    setMostrarManual(false);
   };
 
   const eliminarLinea = (idx: number) => setLineas(prev => prev.filter((_, i) => i !== idx));
   const totalVenta = lineas.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
+
+  const limpiarTodo = () => {
+    setLineas([]); setVerTicket(false);
+    setMostrarManual(false); setPopup(null);
+  };
 
   const exportarPDF = () => {
     const dias = agrupadoPorDia();
@@ -137,134 +148,101 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         <button onClick={() => { setVista('resumen'); cargarVentas(offsetSemana); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${vista === 'resumen' ? 'bg-white shadow text-stone-900' : 'text-stone-500'}`}>Resumen Semanal</button>
       </div>
 
+      {/* ═══════════════ VISTA POS ═══════════════ */}
       {vista === 'pos' && (
-        <div className="space-y-3 pb-36">
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => { setModoManual(false); setMostrarSelector(true); setTimeout(() => buscadorRef.current?.focus(), 100); }} className="bg-white border-2 border-amber-600 text-amber-700 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors shadow-sm"><span className="text-lg">🔍</span> Buscar Producto</button>
-            <button onClick={() => { setModoManual(true); setProductoSeleccionado(null); }} className="bg-white border-2 border-stone-300 text-stone-700 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition-colors shadow-sm"><span className="text-lg">✍️</span> Ingresar Manual</button>
+        <div className="space-y-3 pb-32">
+
+          {/* Buscador siempre visible */}
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+            <div className="p-3 border-b border-stone-100 flex items-center gap-2">
+              <span className="text-base">🔍</span>
+              <input
+                ref={buscadorRef}
+                type="text"
+                placeholder="Buscar producto..."
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+                className="flex-1 font-bold text-stone-800 outline-none placeholder:text-stone-300 text-sm bg-transparent"
+              />
+              {busqueda && <button onClick={() => setBusqueda('')} className="text-stone-300 hover:text-red-400 font-bold text-lg leading-none">✕</button>}
+            </div>
+
+            {/* Filtros origen */}
+            <div className="flex gap-2 px-3 py-2 border-b border-stone-100">
+              {(['todos', 'vitrina', 'compras'] as const).map(o => (
+                <button key={o} onClick={() => setFiltroOrigen(o)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filtroOrigen === o ? 'bg-amber-700 text-white' : 'bg-stone-100 text-stone-500'}`}>
+                  {o === 'todos' ? 'Todos' : o === 'vitrina' ? '🏪 Vitrina' : '📦 Compras'}
+                </button>
+              ))}
+              <span className="ml-auto text-[10px] text-stone-400 font-bold self-center">{productosFiltrados.length}</span>
+            </div>
+
+            {/* Lista de productos — toca para agregar */}
+            <div className="max-h-64 overflow-y-auto divide-y divide-stone-100">
+              {productosFiltrados.length === 0 ? (
+                <p className="text-center py-6 text-stone-400 font-bold text-sm">Sin resultados</p>
+              ) : productosFiltrados.map(p => {
+                const badge = BADGE[p.origen];
+                const enTicket = lineas.filter(l => l.producto_id === p.id).reduce((s, l) => s + l.cantidad, 0);
+                return (
+                  <button
+                    key={`${p.origen}-${p.id}`}
+                    onClick={() => tocarProducto(p)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-amber-50 active:bg-amber-100 transition-colors text-left"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-100">
+                      {p.foto_url ? <img src={p.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-base">📦</span>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-stone-800 text-sm leading-tight truncate">{p.nombre}</p>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badge.cls}`}>{badge.label}</span>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-black text-amber-700 text-sm">{formatCLP(p.precio)}</p>
+                      {enTicket > 0 && <span className="text-[10px] font-bold text-green-600">✓ ×{enTicket}</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Botón manual al fondo del buscador */}
+            <button
+              onClick={() => setMostrarManual(true)}
+              className="w-full py-2.5 text-xs font-bold text-stone-500 hover:text-amber-700 hover:bg-stone-50 transition-colors border-t border-stone-100 flex items-center justify-center gap-1.5"
+            >
+              ✍️ Ingresar producto manual
+            </button>
           </div>
 
-          {mostrarSelector && (
-            <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-end sm:items-center p-0 sm:p-4">
-              <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[88vh]">
-                <div className="p-4 border-b border-stone-100 flex items-center gap-3">
-                  <span className="text-xl">🔍</span>
-                  <input ref={buscadorRef} type="text" placeholder="Buscar en todos los catálogos..." value={busqueda} onChange={e => setBusqueda(e.target.value)} className="flex-1 font-bold text-stone-800 outline-none placeholder:text-stone-300 text-sm" />
-                  <button onClick={() => { setMostrarSelector(false); setBusqueda(''); }} className="text-stone-400 font-bold text-xl hover:text-red-500">✕</button>
-                </div>
-                <div className="flex gap-2 px-4 py-2.5 border-b border-stone-100 items-center">
-                  {(['todos', 'vitrina', 'compras'] as const).map(o => (
-                    <button key={o} onClick={() => setFiltroOrigen(o)} className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filtroOrigen === o ? 'bg-amber-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}>{o === 'todos' ? 'Todos' : o === 'vitrina' ? '🏪 Vitrina' : '📦 Compras'}</button>
-                  ))}
-                  <span className="ml-auto text-[10px] text-stone-400 font-bold">{productosFiltrados.length} productos</span>
-                </div>
-                <div className="overflow-y-auto flex-1 p-3 space-y-2">
-                  {productosFiltrados.length === 0 ? (
-                    <div className="text-center py-10">
-                      <p className="text-stone-400 font-bold text-sm mb-3">Sin resultados para "{busqueda}"</p>
-                      <button onClick={() => { setMostrarSelector(false); setBusqueda(''); setModoManual(true); }} className="bg-stone-800 text-white px-5 py-2.5 rounded-xl font-bold text-sm">✍️ Ingresar manualmente</button>
-                    </div>
-                  ) : productosFiltrados.map(p => {
-                    const badge = BADGE[p.origen];
-                    return (
-                      <button key={`${p.origen}-${p.id}`} onClick={() => seleccionarProducto(p)} className="w-full bg-stone-50 hover:bg-amber-50 border border-stone-200 hover:border-amber-300 p-3 rounded-xl flex items-center gap-3 transition-colors text-left">
-                        <div className="w-11 h-11 rounded-lg bg-white border border-stone-200 overflow-hidden shrink-0">{p.foto_url ? <img src={p.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-lg">📦</span>}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-stone-800 text-sm leading-tight truncate">{p.nombre}</p>
-                          <div className="flex items-center gap-2 mt-0.5"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badge.cls}`}>{badge.label}</span>{p.stock != null && <span className="text-[10px] text-stone-400 font-semibold">Stock: {p.stock}</span>}</div>
-                        </div>
-                        <span className="font-black text-amber-700 text-sm shrink-0">{formatCLP(p.precio)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {productoSeleccionado && !modoManual && (
-            <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-              <div className="p-4 flex items-center gap-3 border-b border-stone-100">
-                <div className="w-12 h-12 rounded-xl overflow-hidden bg-stone-100 shrink-0">{productoSeleccionado.foto_url ? <img src={productoSeleccionado.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-xl">📦</span>}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-stone-800 leading-tight truncate">{productoSeleccionado.nombre}</p>
-                  <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 ${BADGE[productoSeleccionado.origen].cls}`}>{BADGE[productoSeleccionado.origen].label}</span>
-                </div>
-                <button onClick={() => setProductoSeleccionado(null)} className="text-stone-300 hover:text-red-500 font-bold text-xl">✕</button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Cantidad</label>
-                    <div className="flex items-center bg-stone-50 border border-stone-200 rounded-xl overflow-hidden h-11">
-                      <button onClick={() => setCantidad(c => Math.max(1, c - 1))} className="w-11 flex items-center justify-center text-stone-500 font-bold text-lg hover:bg-stone-100 h-full">−</button>
-                      <span className="flex-1 text-center font-black text-stone-800 text-lg">{cantidad}</span>
-                      <button onClick={() => setCantidad(c => c + 1)} className="w-11 flex items-center justify-center text-stone-500 font-bold text-lg hover:bg-stone-100 h-full">+</button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Precio Venta ($)</label>
-                    <input type="number" value={precioVenta} onChange={e => setPrecioVenta(e.target.value)} placeholder="0" className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 font-black text-amber-800 text-lg focus:outline-none focus:border-amber-500 h-11" />
-                  </div>
-                </div>
-                <button onClick={agregarDesdeCatalogo} className="w-full bg-amber-700 hover:bg-amber-800 text-white py-3.5 rounded-xl font-bold text-sm transition-colors">+ Agregar al ticket</button>
-              </div>
-            </div>
-          )}
-
-          {modoManual && (
-            <div className="bg-white rounded-2xl border border-stone-300 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2">
-              <div className="bg-stone-700 text-white px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2"><span>✍️</span><span className="font-bold text-sm">Producto Manual</span></div>
-                <button onClick={() => setModoManual(false)} className="text-stone-400 hover:text-white font-bold">✕</button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Nombre del Producto</label>
-                  <input type="text" value={manualNombre} onChange={e => setManualNombre(e.target.value)} placeholder="Ej: Canasto chico sin asas" className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Cantidad</label>
-                    <div className="flex items-center bg-stone-50 border border-stone-200 rounded-xl overflow-hidden h-11">
-                      <button onClick={() => setManualCantidad(c => Math.max(1, c - 1))} className="w-11 flex items-center justify-center text-stone-500 font-bold text-lg hover:bg-stone-100 h-full">−</button>
-                      <span className="flex-1 text-center font-black text-stone-800 text-lg">{manualCantidad}</span>
-                      <button onClick={() => setManualCantidad(c => c + 1)} className="w-11 flex items-center justify-center text-stone-500 font-bold text-lg hover:bg-stone-100 h-full">+</button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Precio Venta ($)</label>
-                    <input type="number" value={manualPrecio} onChange={e => setManualPrecio(e.target.value)} placeholder="0" className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 font-black text-amber-800 text-lg focus:outline-none focus:border-amber-500 h-11" />
-                  </div>
-                </div>
-                <button onClick={agregarManual} className="w-full bg-stone-800 hover:bg-stone-900 text-white py-3.5 rounded-xl font-bold text-sm transition-colors">+ Agregar al ticket</button>
-              </div>
-            </div>
-          )}
-
+          {/* Ticket acumulado */}
           {lineas.length > 0 && (
             <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-              <div className="bg-stone-800 text-white px-4 py-3 flex items-center gap-2"><span>🧾</span><span className="font-bold text-sm">Ticket — {lineas.length} item{lineas.length !== 1 ? 's' : ''}</span></div>
+              <div className="bg-stone-800 text-white px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span>🧾</span>
+                  <span className="font-bold text-sm">{lineas.length} producto{lineas.length !== 1 ? 's'  : ''}</span>
+                </div>
+                <span className="font-black text-amber-300">{formatCLP(totalVenta)}</span>
+              </div>
               <div className="divide-y divide-stone-100">
-                {lineas.map((l, i) => {
-                  const badge = BADGE[l.origen];
-                  return (
-                    <div key={i} className="flex items-center gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5"><p className="font-bold text-stone-800 text-sm leading-tight truncate">{l.nombre}</p><span className={`shrink-0 text-[9px] font-bold px-1 py-0.5 rounded ${badge.cls}`}>{badge.label}</span></div>
-                        <p className="text-stone-400 text-xs">{l.cantidad}x {formatCLP(l.precio_unitario)}</p>
-                      </div>
-                      <span className="font-black text-stone-800 shrink-0">{formatCLP(l.cantidad * l.precio_unitario)}</span>
-                      <button onClick={() => eliminarLinea(i)} className="text-stone-300 hover:text-red-500 ml-1 shrink-0">✕</button>
+                {lineas.map((l, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-stone-800 text-sm truncate">{l.nombre}</p>
+                      <p className="text-stone-400 text-xs">{l.cantidad}× {formatCLP(l.precio_unitario)}</p>
                     </div>
-                  );
-                })}
+                    <span className="font-black text-stone-800 text-sm shrink-0">{formatCLP(l.cantidad * l.precio_unitario)}</span>
+                    <button onClick={() => eliminarLinea(i)} className="text-stone-300 hover:text-red-500 shrink-0 text-lg leading-none ml-1">✕</button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
+          {/* Fecha + Método pago (solo si hay ticket) */}
           {lineas.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
                 <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">📅 Fecha de la Venta</label>
                 <input type="date" value={fechaVenta} onChange={e => setFechaVenta(e.target.value)} className="w-full bg-white border border-stone-200 rounded-xl px-3 font-bold text-stone-800 focus:outline-none focus:border-amber-500 h-11" />
@@ -273,51 +251,146 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                 <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Método de Pago</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['Efectivo', 'Transferencia'] as MetodoPago[]).map(m => (
-                    <button key={m} onClick={() => setMetodoPago(m)} className={`py-3.5 rounded-xl font-bold text-sm border-2 transition-all ${metodoPago === m ? m === 'Efectivo' ? 'bg-green-600 border-green-600 text-white' : 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300'}`}>{m === 'Efectivo' ? '💵' : '🏦'} {m}</button>
+                    <button key={m} onClick={() => setMetodoPago(m)} className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${metodoPago === m ? m === 'Efectivo' ? 'bg-green-600 border-green-600 text-white' : 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-stone-200 text-stone-600'}`}>
+                      {m === 'Efectivo' ? '💵' : '🏦'} {m}
+                    </button>
                   ))}
                 </div>
-                {metodoPago === 'Transferencia' && (
-                  <div className="mt-3 animate-in fade-in slide-in-from-top-1">
-                    {bancos.length === 0 ? (
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><p className="text-blue-700 font-bold text-xs">⚠️ No tienes bancos registrados.</p><p className="text-blue-500 text-xs mt-0.5">Ve a <strong>Mi Local</strong> → <strong>Entidades Bancarias</strong> para agregar cuentas.</p></div>
-                    ) : (
-                      <div>
-                        <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">¿A qué cuenta transfirió el cliente?</label>
-                        <div className="grid gap-2">
-                          {bancos.map(b => (
-                            <button key={b.id} type="button" onClick={() => setEntidadBancariaId(b.id)} className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-3 ${bancoPagando === b.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-stone-200 text-stone-700 hover:border-blue-300'}`}>
-                              <span className="text-xl shrink-0">🏦</span>
-                              <div className="min-w-0"><p className="font-bold text-sm leading-tight">{b.nombre}</p>{(b.titular || b.numero_cuenta) && (<p className={`text-xs mt-0.5 ${bancoPagando === b.id ? 'text-blue-100' : 'text-stone-400'}`}>{b.titular}{b.titular && b.numero_cuenta ? ' · ' : ''}{b.numero_cuenta ? `Cta: ${b.numero_cuenta}` : ''}</p>)}</div>
-                              {bancoPagando === b.id && <span className="ml-auto font-black text-lg shrink-0">✓</span>}
-                            </button>
-                          ))}
+                {metodoPago === 'Transferencia' && bancos.length > 0 && (
+                  <div className="mt-2 grid gap-2">
+                    {bancos.map(b => (
+                      <button key={b.id} onClick={() => setEntidadBancariaId(b.id)} className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-3 ${bancoPagando === b.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-stone-200 text-stone-700'}`}>
+                        <span className="text-xl shrink-0">🏦</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm">{b.nombre}</p>
+                          {(b.titular || b.numero_cuenta) && <p className={`text-xs mt-0.5 ${bancoPagando === b.id ? 'text-blue-100' : 'text-stone-400'}`}>{b.titular}{b.titular && b.numero_cuenta ? ' · ' : ''}{b.numero_cuenta ? `Cta: ${b.numero_cuenta}` : ''}</p>}
                         </div>
-                      </div>
-                    )}
+                        {bancoPagando === b.id && <span className="ml-auto font-black text-lg">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {metodoPago === 'Transferencia' && bancos.length === 0 && (
+                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                    <p className="text-blue-700 font-bold text-xs">⚠️ No tienes bancos registrados. Ve a Mi Local → Entidades Bancarias.</p>
                   </div>
                 )}
               </div>
             </div>
           )}
-
-          <div className="fixed left-0 w-full px-4 z-30" style={{ bottom: "var(--nav-h)" }}>
-            <div className="max-w-lg mx-auto">
-              {lineas.length > 0 && (
-                <div className="flex items-stretch gap-2 bg-stone-100 p-2 rounded-2xl border border-stone-300 shadow-xl">
-                  <div className="flex-1 bg-white border border-stone-200 rounded-xl p-2 flex items-center px-3 shadow-inner">
-                    <span className="text-stone-500 font-bold text-[10px] uppercase tracking-widest leading-none">Total<br />Venta</span>
-                    <span className="font-black text-xl ml-auto text-stone-800">{formatCLP(totalVenta)}</span>
-                  </div>
-                  <button onClick={() => registrarVenta(lineas, metodoPago, bancoPagando, fechaVenta, () => setLineas([]))} disabled={guardando} className="bg-amber-700 hover:bg-amber-800 text-white px-5 rounded-xl font-bold text-sm transition-colors disabled:opacity-60">{guardando ? '⏳' : '✅ Registrar'}</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {exito && (<div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm">✅ ¡Venta registrada con éxito!</div>)}
         </div>
       )}
 
+      {/* ═══════════════ POPUP CONFIRMACIÓN PRODUCTO ═══════════════ */}
+      {popup && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+            {/* Header producto */}
+            <div className="flex items-center gap-3 p-4 border-b border-stone-100">
+              <div className="w-14 h-14 rounded-xl overflow-hidden bg-stone-100 shrink-0 border border-stone-100">
+                {popup.producto.foto_url ? <img src={popup.producto.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-2xl">📦</span>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-stone-800 leading-tight">{popup.producto.nombre}</p>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${BADGE[popup.producto.origen].cls}`}>{BADGE[popup.producto.origen].label}</span>
+              </div>
+              <button onClick={() => setPopup(null)} className="text-stone-300 hover:text-red-400 font-bold text-xl shrink-0">✕</button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Cantidad */}
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Cantidad</label>
+                <div className="flex items-center bg-stone-50 border border-stone-200 rounded-xl overflow-hidden h-12">
+                  <button onClick={() => setPopup(p => p ? { ...p, cantidad: Math.max(1, p.cantidad - 1) } : p)} className="w-12 flex items-center justify-center text-stone-500 font-bold text-xl hover:bg-stone-100 h-full">−</button>
+                  <span className="flex-1 text-center font-black text-stone-800 text-xl">{popup.cantidad}</span>
+                  <button onClick={() => setPopup(p => p ? { ...p, cantidad: p.cantidad + 1 } : p)} className="w-12 flex items-center justify-center text-stone-500 font-bold text-xl hover:bg-stone-100 h-full">+</button>
+                </div>
+              </div>
+
+              {/* Precio editable */}
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Precio de Venta ($)</label>
+                <input
+                  type="number"
+                  value={popup.precio}
+                  onChange={e => setPopup(p => p ? { ...p, precio: e.target.value } : p)}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 font-black text-amber-800 text-2xl focus:outline-none focus:border-amber-500 h-12"
+                />
+              </div>
+
+              {/* Total preview */}
+              <div className="bg-stone-50 rounded-xl px-4 py-2 flex justify-between items-center">
+                <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">Subtotal</span>
+                <span className="font-black text-stone-800 text-lg">{formatCLP(popup.cantidad * (parseFloat(popup.precio) || 0))}</span>
+              </div>
+
+              <button onClick={confirmarPopup} className="w-full bg-amber-700 hover:bg-amber-800 text-white py-4 rounded-2xl font-bold text-base transition-colors">
+                ✓ Agregar al ticket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL INGRESO MANUAL ═══════════════ */}
+      {mostrarManual && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+            <div className="bg-stone-700 text-white px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2"><span>✍️</span><span className="font-bold">Producto Manual</span></div>
+              <button onClick={() => { setMostrarManual(false); setManualNombre(''); setManualCantidad(1); setManualPrecio(''); }} className="text-stone-400 hover:text-white font-bold text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Nombre</label>
+                <input type="text" value={manualNombre} onChange={e => setManualNombre(e.target.value)} placeholder="Ej: Canasto chico sin asas" className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Cantidad</label>
+                  <div className="flex items-center bg-stone-50 border border-stone-200 rounded-xl overflow-hidden h-11">
+                    <button onClick={() => setManualCantidad(c => Math.max(1, c - 1))} className="w-11 flex items-center justify-center text-stone-500 font-bold text-lg hover:bg-stone-100 h-full">−</button>
+                    <span className="flex-1 text-center font-black text-stone-800 text-lg">{manualCantidad}</span>
+                    <button onClick={() => setManualCantidad(c => c + 1)} className="w-11 flex items-center justify-center text-stone-500 font-bold text-lg hover:bg-stone-100 h-full">+</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Precio ($)</label>
+                  <input type="number" value={manualPrecio} onChange={e => setManualPrecio(e.target.value)} placeholder="0" className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 font-black text-amber-800 text-lg focus:outline-none focus:border-amber-500 h-11" />
+                </div>
+              </div>
+              <button onClick={agregarManual} className="w-full bg-stone-800 hover:bg-stone-900 text-white py-3.5 rounded-xl font-bold text-sm transition-colors">+ Agregar al ticket</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ BARRA FIJA INFERIOR ═══════════════ */}
+      {vista === 'pos' && lineas.length > 0 && (
+        <div className="fixed left-0 w-full px-4 z-30" style={{ bottom: "var(--nav-h)" }}>
+          <div className="max-w-lg mx-auto">
+            <div className="flex items-stretch gap-2 bg-stone-100 p-2 rounded-2xl border border-stone-300 shadow-xl">
+              <div className="flex-1 bg-white border border-stone-200 rounded-xl px-3 py-2 shadow-inner flex flex-col justify-center">
+                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">{lineas.length} producto{lineas.length !== 1 ? 's' : ''} · {metodoPago}</span>
+                <span className="font-black text-xl text-stone-800">{formatCLP(totalVenta)}</span>
+              </div>
+              <button
+                onClick={() => registrarVenta(lineas, metodoPago, bancoPagando, fechaVenta, limpiarTodo)}
+                disabled={guardando}
+                className="bg-amber-700 hover:bg-amber-800 text-white px-5 rounded-xl font-bold text-sm transition-colors disabled:opacity-60 flex flex-col items-center justify-center gap-0.5"
+              >
+                <span className="text-lg leading-none">{guardando ? '⏳' : '✅'}</span>
+                <span className="text-[10px]">Registrar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exito && <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm">✅ ¡Venta registrada con éxito!</div>}
+
+      {/* ═══════════════ VISTA RESUMEN ═══════════════ */}
       {vista === 'resumen' && (
         <div className="space-y-4 pb-10">
           {(() => {
@@ -331,7 +404,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                   <div className="text-center"><p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">{label}</p><p className="font-bold text-sm mt-0.5">{inicio.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short' })} — {fin.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' })}</p></div>
                   <button onClick={() => cambiarSemana(offsetSemana + 1)} disabled={esActual} className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-lg transition-colors active:scale-95">→</button>
                 </div>
-                {!esActual && (<button onClick={() => cambiarSemana(0)} className="w-full text-center text-amber-300 text-xs font-bold py-2 hover:text-amber-200 transition-colors border-t border-stone-700">Volver a semana actual</button>)}
+                {!esActual && <button onClick={() => cambiarSemana(0)} className="w-full text-center text-amber-300 text-xs font-bold py-2 hover:text-amber-200 transition-colors border-t border-stone-700">Volver a semana actual</button>}
                 {esActual && <div className="pb-2" />}
               </div>
             );
@@ -357,12 +430,12 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             return (<div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2"><p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencias por cuenta (semana)</p>{entradas.map(([key, info]) => (<div key={key} className="flex justify-between items-center bg-white border border-blue-100 rounded-xl px-3 py-2"><span className="text-sm font-bold text-blue-800">{info.nombre}</span><span className="font-black text-blue-900 text-sm">{formatCLP(info.total)}</span></div>))}</div>);
           })()}
 
-          {cargandoResumen ? (<p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p>) : errorVentas ? (
+          {cargandoResumen ? <p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p> : errorVentas ? (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center space-y-2"><span className="text-2xl block">⚠️</span><p className="font-bold text-red-700 text-sm">Error al cargar ventas</p><p className="text-red-600 text-xs font-mono break-all">{errorVentas}</p><button onClick={() => cargarVentas(offsetSemana)} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-xs">Reintentar</button></div>
           ) : agrupadoPorDia().length === 0 ? (
             <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center"><span className="text-3xl block mb-2">📭</span><p className="text-stone-400 font-bold text-sm">Sin ventas esta semana.</p></div>
           ) : (
-            <div className="space-y-3"><h3 className="font-bold text-stone-500 text-sm uppercase tracking-widest">Detalle por Día</h3>{agrupadoPorDia().map(d => (<TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />))}</div>
+            <div className="space-y-3"><h3 className="font-bold text-stone-500 text-sm uppercase tracking-widest">Detalle por Día</h3>{agrupadoPorDia().map(d => <TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />)}</div>
           )}
 
           <div className="space-y-2 pt-2">
