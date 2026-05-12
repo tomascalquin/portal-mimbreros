@@ -51,22 +51,18 @@ export default function PestanaCompras({ miId }: any) {
   }, [miId]);
 
   async function cargarCategorias() {
-    const { data } = await supabase.from('categorias').select('*').eq('tienda_id', miId).order('nombre');
+    const { data } = await supabase.from('categorias').select('id, nombre').eq('tienda_id', miId).order('nombre');
     if (data) setCategorias(data);
   }
 
   async function cargarDatos() {
-    const { data: listaArtesanos } = await supabase.from('artesanos').select('*').eq('tienda_id', miId);
+    const [{ data: listaArtesanos }, { data: listaArticulos }, { data: comprasMercaderia }] = await Promise.all([
+      supabase.from('artesanos').select('id, rut, nombre, telefono, correo, direccion, forma_pago').eq('tienda_id', miId),
+      supabase.from('articulos_maestro').select('id, nombre, precio_costo, precio_venta, foto_url, foto_url_2, stock, rut_artesano, categoria_id, descripcion').eq('tienda_id', miId),
+      supabase.from('registro_compras').select('id, fecha, total, rut_artesano, estado, detalle').eq('tienda_id', miId).order('fecha', { ascending: false }).limit(300),
+    ]);
     if (listaArtesanos) setArtesanos(listaArtesanos);
-
-    const { data: listaArticulos } = await supabase.from('articulos_maestro').select('*').eq('tienda_id', miId);
     if (listaArticulos) setArticulosMaestro(listaArticulos);
-
-    const { data: comprasMercaderia } = await supabase.from('registro_compras')
-      .select('*')
-      .eq('tienda_id', miId)
-      .order('fecha', { ascending: false });
-      
     if (comprasMercaderia) setHistorialCompras(comprasMercaderia);
   }
 
