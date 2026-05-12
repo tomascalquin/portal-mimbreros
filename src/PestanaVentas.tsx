@@ -22,7 +22,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const [manualPrecio, setManualPrecio] = useState('');
 
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
-  const [verTicket, setVerTicket] = useState(false);
+
   const [fechaVenta, setFechaVenta] = useState(hoyEnSantiago());
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('Efectivo');
   const [entidadBancariaId, setEntidadBancariaId] = useState<string>('');
@@ -84,7 +84,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const totalVenta = lineas.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
 
   const limpiarTodo = () => {
-    setLineas([]); setVerTicket(false);
+    setLineas([]);
     setMostrarManual(false); setPopup(null);
   };
 

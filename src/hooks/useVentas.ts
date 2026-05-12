@@ -22,7 +22,7 @@ export function useVentas(miId: string) {
   }, [miId]);
 
   async function cargarBancos() {
-    const { data } = await supabase.from('entidades_bancarias').select('*').eq('tienda_id', miId).order('nombre');
+    const { data } = await supabase.from('entidades_bancarias').select('id, nombre, numero_cuenta').eq('tienda_id', miId).order('nombre');
     if (data) { setBancos(data); }
   }
 
@@ -40,27 +40,48 @@ export function useVentas(miId: string) {
     setCatalogoUnificado([...vitrinaMapped, ...comprasMapped]);
   }
 
+  // Calcula el rango lunes-domingo de la semana con el offset dado (en Supabase)
+  function rangoSemana(offset: number): { inicio: string; fin: string } {
+    const TZ = 'America/Santiago';
+    const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+    const dia = ahora.getDay(); // 0=dom, 1=lun ...
+    const diffLunes = (dia === 0 ? -6 : 1 - dia) + offset * 7;
+    const lunes = new Date(ahora);
+    lunes.setDate(ahora.getDate() + diffLunes);
+    lunes.setHours(0, 0, 0, 0);
+    const domingo = new Date(lunes);
+    domingo.setDate(lunes.getDate() + 6);
+    domingo.setHours(23, 59, 59, 999);
+    return { inicio: lunes.toISOString(), fin: domingo.toISOString() };
+  }
+
   async function cargarVentas(offset = 0) {
     setCargandoResumen(true);
     setErrorVentas(null);
-    const { data, error } = await supabase.from('ventas').select('*')
+    const { inicio, fin } = rangoSemana(offset);
+    // Filtrar por semana directamente en Supabase — trae solo columnas necesarias
+    const { data, error } = await supabase
+      .from('ventas')
+      .select('id, created_at, nombre_producto, cantidad, precio_unitario, total, metodo_pago, banco_id, producto_id')
       .eq('tienda_id', miId)
-      .order('created_at', { ascending: false })
-      .limit(1000);
+      .gte('created_at', inicio)
+      .lte('created_at', fin)
+      .order('created_at', { ascending: false });
     if (error) {
       console.error('Error cargarVentas:', error);
       setErrorVentas(error.message);
     }
     if (data) {
-      setTodasLasVentas(data);
-      setVentas(data.filter(v => esDeSemana(v.created_at, offset)));
+      setVentas(data);
+      setTodasLasVentas(data); // mantenemos compatibilidad
     }
     setCargandoResumen(false);
   }
 
   const cambiarSemana = (nuevoOffset: number) => {
     setOffsetSemana(nuevoOffset);
-    setVentas(todasLasVentas.filter(v => esDeSemana(v.created_at, nuevoOffset)));
+    // Recarga desde Supabase con el nuevo rango — no descarga 1000 filas
+    cargarVentas(nuevoOffset);
   };
 
   const registrarVenta = async (
@@ -74,35 +95,61 @@ export function useVentas(miId: string) {
     setGuardando(true);
 
     const dateObj = new Date(`${fechaVenta}T12:00:00`);
+    const isoDate = dateObj.toISOString();
 
-    for (const linea of lineas) {
-      const esUuid = linea.origen === 'vitrina' && linea.producto_id != null;
-      const { error: insertError } = await supabase.from('ventas').insert({
-        tienda_id: miId,
-        producto_id: esUuid ? linea.producto_id : null,
-        nombre_producto: linea.nombre, cantidad: linea.cantidad,
-        precio_unitario: linea.precio_unitario,
-        total: linea.cantidad * linea.precio_unitario,
-        metodo_pago: metodoPago,
-        banco_id: metodoPago === 'Transferencia' && entidadBancariaId ? entidadBancariaId : null,
-        created_at: dateObj.toISOString()
-      });
-      if (insertError) {
-        console.error('Error registrando venta:', insertError);
-        setGuardando(false);
-        alert(`❌ Error al registrar la venta: ${insertError.message}`);
-        return;
-      }
-      if (linea.producto_id && linea.origen !== 'manual') {
-        const tabla = linea.origen === 'vitrina' ? 'productos' : 'articulos_maestro';
-        const prod = catalogoUnificado.find(p => p.id === linea.producto_id);
-        if (prod && prod.stock != null)
-          await supabase.from(tabla).update({ stock: Math.max(0, prod.stock - linea.cantidad) }).eq('id', linea.producto_id);
-      }
+    // Insertar todas las líneas de una sola vez (1 request en vez de N)
+    const registros = lineas.map(linea => ({
+      tienda_id: miId,
+      producto_id: linea.origen === 'vitrina' && linea.producto_id != null ? linea.producto_id : null,
+      nombre_producto: linea.nombre,
+      cantidad: linea.cantidad,
+      precio_unitario: linea.precio_unitario,
+      total: linea.cantidad * linea.precio_unitario,
+      metodo_pago: metodoPago,
+      banco_id: metodoPago === 'Transferencia' && entidadBancariaId ? entidadBancariaId : null,
+      created_at: isoDate,
+    }));
+
+    const { error: insertError } = await supabase.from('ventas').insert(registros);
+    if (insertError) {
+      console.error('Error registrando venta:', insertError);
+      setGuardando(false);
+      alert(`❌ Error al registrar la venta: ${insertError.message}`);
+      return;
     }
 
-    await cargarCatalogos();
-    await cargarVentas(offsetSemana);
+    // Actualizar stock en Supabase en paralelo (en vez de secuencial)
+    const lineasConStock = lineas.filter(l => l.producto_id && l.origen !== 'manual');
+    if (lineasConStock.length > 0) {
+      await Promise.all(lineasConStock.map(linea => {
+        const tabla = linea.origen === 'vitrina' ? 'productos' : 'articulos_maestro';
+        const prod = catalogoUnificado.find(p => p.id === linea.producto_id);
+        if (!prod || prod.stock == null) return Promise.resolve();
+        return supabase.from(tabla).update({ stock: Math.max(0, prod.stock - linea.cantidad) }).eq('id', linea.producto_id);
+      }));
+    }
+
+    // Actualizar stock en estado local sin recargar todo el catálogo desde Supabase
+    setCatalogoUnificado(prev => prev.map(p => {
+      const linea = lineas.find(l => l.producto_id === p.id && l.origen !== 'manual');
+      if (linea && p.stock != null) return { ...p, stock: Math.max(0, p.stock - linea.cantidad) };
+      return p;
+    }));
+
+    // Agregar las nuevas ventas al estado local sin recargar todo desde Supabase
+    const nuevasVentas = lineas.map(linea => ({
+      id: crypto.randomUUID(),
+      created_at: isoDate,
+      nombre_producto: linea.nombre,
+      cantidad: linea.cantidad,
+      precio_unitario: linea.precio_unitario,
+      total: linea.cantidad * linea.precio_unitario,
+      metodo_pago: metodoPago,
+      banco_id: metodoPago === 'Transferencia' && entidadBancariaId ? entidadBancariaId : null,
+      producto_id: linea.origen === 'vitrina' ? linea.producto_id : null,
+    }));
+    setVentas(prev => [...nuevasVentas, ...prev]);
+    setTodasLasVentas(prev => [...nuevasVentas, ...prev]);
     setGuardando(false);
     setExito(true);
     setTimeout(() => setExito(false), 2500);

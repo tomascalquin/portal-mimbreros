@@ -33,23 +33,55 @@ export default function Vitrina() {
   }, []);
 
   async function cargarVitrina() {
-    const { data: dataTienda, error: errorTienda } = await supabase
-      .from('tiendas').select('*').eq('id', tiendaId).single();
+    // Cache en sessionStorage: evita recargar si ya se cargó en esta sesión del navegador
+    const cacheKey = `vitrina_${tiendaId}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const { tienda, productos, categorias, ts } = JSON.parse(cached);
+        // Cache válido por 5 minutos
+        if (Date.now() - ts < 5 * 60 * 1000) {
+          setTienda(tienda);
+          setProductos(productos);
+          setCategorias(categorias);
+          setCargando(false);
+          return;
+        }
+      } catch (_) { /* cache corrupto, ignorar */ }
+    }
+
+    // Solo columnas necesarias para la vitrina pública
+    const [{ data: dataTienda, error: errorTienda }, { data: dataProductos, error: errorProductos }, { data: dataCategorias, error: errorCategorias }] = await Promise.all([
+      supabase.from('tiendas').select('nombre_local, telefono').eq('id', tiendaId).single(),
+      supabase.from('productos')
+        .select('id, nombre, descripcion, precio, foto_url, foto_url_2, categoria_id, visible, stock')
+        .eq('tienda_id', tiendaId)
+        .eq('visible', true),
+      supabase.from('categorias').select('id, nombre').eq('tienda_id', tiendaId).order('nombre'),
+    ]);
+
     if (errorTienda) console.error('Error al buscar tienda:', errorTienda.message);
-    if (dataTienda) setTienda(dataTienda);
-
-    const { data: dataProductos, error: errorProductos } = await supabase
-      .from('productos').select('*').eq('tienda_id', tiendaId);
     if (errorProductos) console.error('Error al buscar productos:', errorProductos.message);
-    if (dataProductos) setProductos(dataProductos);
-
-    // Cargar categorías dinámicas desde la DB
-    const { data: dataCategorias, error: errorCategorias } = await supabase
-      .from('categorias').select('*').eq('tienda_id', tiendaId).order('nombre');
     if (errorCategorias) console.error('Error al buscar categorías:', errorCategorias.message);
-    if (dataCategorias) setCategorias(dataCategorias);
 
+    const tiendaData = dataTienda || null;
+    const productosData = dataProductos || [];
+    const categoriasData = dataCategorias || [];
+
+    if (tiendaData) setTienda(tiendaData);
+    setProductos(productosData);
+    setCategorias(categoriasData);
     setCargando(false);
+
+    // Guardar en cache solo si cargó correctamente
+    if (tiendaData) {
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        tienda: tiendaData,
+        productos: productosData,
+        categorias: categoriasData,
+        ts: Date.now(),
+      }));
+    }
   }
 
   const consultarPorWhatsApp = (producto: any, e?: any) => {
