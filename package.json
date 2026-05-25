@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
     "@tailwindcss/vite": "^4.2.1",
+    "browser-image-compression": "^2.0.2",
     "html2pdf.js": "^0.14.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",

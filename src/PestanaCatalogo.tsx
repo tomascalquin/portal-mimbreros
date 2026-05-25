@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from './supabase';
+import { supabase, getOptimizedUrl } from './supabase';
+import imageCompression from 'browser-image-compression';
 // @ts-ignore
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -51,8 +52,13 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
     let fotoUrl2 = productoAEditar ? misProductos.find(p => p.id === productoAEditar)?.foto_url_2 : null;
 
     if (prodArchivo) {
-      const nombreArchivo = `${miId}/${Math.random()}-${prodArchivo.name}`;
-      const { error } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, prodArchivo);
+      let fileToUpload = prodArchivo;
+      try {
+        fileToUpload = await imageCompression(prodArchivo, { maxSizeMB: 0.3, maxWidthOrHeight: 1200, useWebWorker: true });
+      } catch (e) { console.error("Error comprimiendo foto 1", e); }
+      
+      const nombreArchivo = `${miId}/${Math.random()}-${fileToUpload.name}`;
+      const { error } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, fileToUpload);
       if (!error) {
         const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo);
         fotoUrl = data.publicUrl;
@@ -60,8 +66,13 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
     }
 
     if (prodArchivo2) {
-      const nombreArchivo2 = `${miId}/detalle-${Math.random()}-${prodArchivo2.name}`;
-      const { error } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, prodArchivo2);
+      let fileToUpload2 = prodArchivo2;
+      try {
+        fileToUpload2 = await imageCompression(prodArchivo2, { maxSizeMB: 0.3, maxWidthOrHeight: 1200, useWebWorker: true });
+      } catch (e) { console.error("Error comprimiendo foto 2", e); }
+      
+      const nombreArchivo2 = `${miId}/detalle-${Math.random()}-${fileToUpload2.name}`;
+      const { error } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, fileToUpload2);
       if (!error) {
         const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo2);
         fotoUrl2 = data.publicUrl;
@@ -149,7 +160,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
           {misProductos.map(p => (
             <div key={p.id} style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }} className="border border-stone-200 rounded-xl overflow-hidden">
               <div className="h-40 bg-stone-100">
-                {p.foto_url ? <img src={p.foto_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl">📦</div>}
+                {p.foto_url ? <img src={getOptimizedUrl(p.foto_url, 400)} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center text-4xl">📦</div>}
               </div>
               <div className="p-4 text-center">
                 <h3 className="text-sm font-bold text-stone-800 leading-tight">{p.nombre}</h3>
@@ -202,7 +213,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                     title="Ver vista previa de la vitrina"
                   >
                     <div className="w-16 h-16 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-100 flex items-center justify-center relative">
-                      {p.foto_url ? <img src={p.foto_url} className="w-full h-full object-cover" /> : <span className="text-2xl text-stone-300">📦</span>}
+                      {p.foto_url ? <img src={getOptimizedUrl(p.foto_url, 200)} className="w-full h-full object-cover" loading="lazy" /> : <span className="text-2xl text-stone-300">📦</span>}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
                     </div>
                     <div className="flex-1">
@@ -316,7 +327,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                   
                   return (
                     <>
-                      <img src={fotos[fotoActualIndex]} className="w-full h-full object-cover transition-opacity duration-300" alt="Producto" />
+                      <img src={getOptimizedUrl(fotos[fotoActualIndex], 800)} className="w-full h-full object-cover transition-opacity duration-300" alt="Producto" />
                       {fotos.length > 1 && (
                         <>
                           <button onClick={() => setFotoActualIndex(prev => prev === 0 ? fotos.length - 1 : prev - 1)} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-stone-900 w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all z-10">

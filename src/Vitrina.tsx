@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from './supabase';
-
+import { supabase, getOptimizedUrl } from './supabase';
 export default function Vitrina() {
   const { tiendaId } = useParams();
   const [tienda, setTienda] = useState<any>(null);
@@ -221,7 +220,7 @@ export default function Vitrina() {
             onClick={() => setFotoFullscreen(null)}
           >✕</button>
           <img
-            src={fotoFullscreen}
+            src={getOptimizedUrl(fotoFullscreen, 1200)}
             alt="Foto ampliada"
             className="max-w-full max-h-full object-contain p-4"
             onClick={e => e.stopPropagation()}
@@ -318,7 +317,7 @@ export default function Vitrina() {
                     >
                       <div className="aspect-square bg-stone-100 shrink-0">
                         {p.foto_url
-                          ? <img src={p.foto_url} alt={p.nombre} className="w-full h-full object-cover" />
+                          ? <img src={getOptimizedUrl(p.foto_url, 400)} alt={p.nombre} className="w-full h-full object-cover" loading="lazy" />
                           : <div className="w-full h-full flex items-center justify-center text-4xl">📦</div>
                         }
                       </div>
@@ -368,7 +367,7 @@ export default function Vitrina() {
                 return (
                   <>
                     <img
-                      src={fotos[fotoActualIndex]}
+                      src={getOptimizedUrl(fotos[fotoActualIndex], 800)}
                       className="w-full h-full object-cover transition-opacity duration-300 cursor-zoom-in"
                       alt="Producto"
                       onClick={() => setFotoFullscreen(fotos[fotoActualIndex])}

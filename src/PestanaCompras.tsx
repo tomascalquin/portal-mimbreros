@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
+import imageCompression from 'browser-image-compression';
 
 export default function PestanaCompras({ miId }: any) {
   const [subPestanaCompras, setSubPestanaCompras] = useState('pedido');
@@ -207,8 +208,13 @@ export default function PestanaCompras({ miId }: any) {
     // Foto 1
     let fotoUrl: string | null = artActual?.foto_url || null;
     if (formArtArchivo) {
-      const nombreArchivo = `${miId}/artesanos/${Math.random()}-${formArtArchivo.name}`;
-      const { error: uploadError } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, formArtArchivo);
+      let fileToUpload = formArtArchivo;
+      try {
+        fileToUpload = await imageCompression(formArtArchivo, { maxSizeMB: 0.3, maxWidthOrHeight: 1200, useWebWorker: true });
+      } catch (e) { console.error("Error comprimiendo foto 1", e); }
+      
+      const nombreArchivo = `${miId}/artesanos/${Math.random()}-${fileToUpload.name}`;
+      const { error: uploadError } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo, fileToUpload);
       if (!uploadError) {
         const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo);
         fotoUrl = data.publicUrl;
@@ -218,8 +224,13 @@ export default function PestanaCompras({ miId }: any) {
     // Foto 2
     let fotoUrl2: string | null = artActual?.foto_url_2 || null;
     if (formArtArchivo2) {
-      const nombreArchivo2 = `${miId}/artesanos/${Math.random()}-${formArtArchivo2.name}`;
-      const { error: uploadError2 } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, formArtArchivo2);
+      let fileToUpload2 = formArtArchivo2;
+      try {
+        fileToUpload2 = await imageCompression(formArtArchivo2, { maxSizeMB: 0.3, maxWidthOrHeight: 1200, useWebWorker: true });
+      } catch (e) { console.error("Error comprimiendo foto 2", e); }
+      
+      const nombreArchivo2 = `${miId}/artesanos/${Math.random()}-${fileToUpload2.name}`;
+      const { error: uploadError2 } = await supabase.storage.from('fotos_muebles').upload(nombreArchivo2, fileToUpload2);
       if (!uploadError2) {
         const { data } = supabase.storage.from('fotos_muebles').getPublicUrl(nombreArchivo2);
         fotoUrl2 = data.publicUrl;
