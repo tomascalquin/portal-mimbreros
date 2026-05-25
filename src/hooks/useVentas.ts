@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import type { EntidadBancaria, ProductoUnificado, LineaVenta, ResumenDia, ResumenLinea, MetodoPago } from '../types';
-import { esDeSemana, fechaEnSantiago } from '../utils/fecha';
+import { fechaEnSantiago } from '../utils/fecha';
 
 export function useVentas(miId: string) {
   const [catalogoUnificado, setCatalogoUnificado] = useState<ProductoUnificado[]>([]);
   const [bancos, setBancos] = useState<EntidadBancaria[]>([]);
   const [ventas, setVentas] = useState<any[]>([]);
-  const [todasLasVentas, setTodasLasVentas] = useState<any[]>([]);
+
   const [offsetSemana, setOffsetSemana] = useState(0);
   const [cargandoResumen, setCargandoResumen] = useState(false);
   const [errorVentas, setErrorVentas] = useState<string | null>(null);
@@ -73,7 +73,6 @@ export function useVentas(miId: string) {
     }
     if (data) {
       setVentas(data);
-      setTodasLasVentas(data); // mantenemos compatibilidad
     }
     setCargandoResumen(false);
   }
@@ -149,7 +148,6 @@ export function useVentas(miId: string) {
       producto_id: linea.origen === 'vitrina' ? linea.producto_id : null,
     }));
     setVentas(prev => [...nuevasVentas, ...prev]);
-    setTodasLasVentas(prev => [...nuevasVentas, ...prev]);
     setGuardando(false);
     setExito(true);
     setTimeout(() => setExito(false), 2500);
