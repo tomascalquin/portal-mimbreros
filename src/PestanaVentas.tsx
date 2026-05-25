@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import type { MetodoPago, OrigenProducto, ProductoUnificado, LineaVenta, ResumenDia } from './types';
+import { getOptimizedUrl } from './supabase';
 import { formatCLP, formatFecha, calcularSemana, hoyEnSantiago, TZ } from './utils/fecha';
 import { BADGE } from './utils/badge';
 import { useVentas } from './hooks/useVentas';
@@ -191,7 +192,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                     className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-amber-50 active:bg-amber-100 transition-colors text-left"
                   >
                     <div className="w-10 h-10 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-100">
-                      {p.foto_url ? <img src={p.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-base">📦</span>}
+                      {p.foto_url ? <img src={getOptimizedUrl(p.foto_url, 400)} className="w-full h-full object-cover" loading="lazy" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-base">📦</span>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-stone-800 text-sm leading-tight truncate">{p.nombre}</p>
@@ -288,7 +289,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             {/* Header producto */}
             <div className="flex items-center gap-3 p-4 border-b border-stone-100">
               <div className="w-14 h-14 rounded-xl overflow-hidden bg-stone-100 shrink-0 border border-stone-100">
-                {popup.producto.foto_url ? <img src={popup.producto.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-2xl">📦</span>}
+                {popup.producto.foto_url ? <img src={getOptimizedUrl(popup.producto.foto_url, 800)} className="w-full h-full object-cover" loading="lazy" /> : <span className="w-full h-full flex items-center justify-center text-stone-300 text-2xl">📦</span>}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-stone-800 leading-tight">{popup.producto.nombre}</p>

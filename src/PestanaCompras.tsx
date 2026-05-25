@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from './supabase';
+import { supabase, getOptimizedUrl } from './supabase';
 import imageCompression from 'browser-image-compression';
 
 export default function PestanaCompras({ miId }: any) {
@@ -422,7 +422,7 @@ export default function PestanaCompras({ miId }: any) {
                     return (
                       <div key={art.id} className="bg-white rounded-2xl p-3 shadow-sm border border-stone-200 flex items-center gap-4 hover:border-amber-300 transition-colors">
                         <div className="w-16 h-16 bg-stone-50 rounded-xl flex items-center justify-center shrink-0 border border-stone-100 overflow-hidden">
-                          {art.foto_url ? <img src={art.foto_url} className="w-full h-full object-cover" /> : <span className="text-2xl text-stone-300">📦</span>}
+                          {art.foto_url ? <img src={getOptimizedUrl(art.foto_url, 400)} className="w-full h-full object-cover" loading="lazy" /> : <span className="text-2xl text-stone-300">📦</span>}
                         </div>
                         <div className="flex-1">
                           <h3 className="font-bold text-stone-800 text-sm leading-tight">{art.nombre}</h3>
@@ -597,9 +597,10 @@ export default function PestanaCompras({ miId }: any) {
                           {(formArtArchivo ? URL.createObjectURL(formArtArchivo) : prevFoto1) ? (
                             <>
                               <img
-                                src={formArtArchivo ? URL.createObjectURL(formArtArchivo) : prevFoto1!}
+                                src={formArtArchivo ? URL.createObjectURL(formArtArchivo) : getOptimizedUrl(prevFoto1!, 800)}
                                 className="w-full h-full object-cover"
                                 alt="Foto 1"
+                                loading="lazy"
                               />
                               <button
                                 type="button"
@@ -631,9 +632,10 @@ export default function PestanaCompras({ miId }: any) {
                           {(formArtArchivo2 ? URL.createObjectURL(formArtArchivo2) : prevFoto2) ? (
                             <>
                               <img
-                                src={formArtArchivo2 ? URL.createObjectURL(formArtArchivo2) : prevFoto2!}
+                                src={formArtArchivo2 ? URL.createObjectURL(formArtArchivo2) : getOptimizedUrl(prevFoto2!, 800)}
                                 className="w-full h-full object-cover"
                                 alt="Foto 2"
+                                loading="lazy"
                               />
                               <button
                                 type="button"
@@ -750,7 +752,7 @@ export default function PestanaCompras({ miId }: any) {
                     return (
                       <div key={art.id} className="bg-white border border-stone-200 p-3 rounded-xl shadow-sm flex items-center justify-between hover:border-amber-300">
                         <div className="w-12 h-12 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-200 mr-3">
-                          {art.foto_url ? <img src={art.foto_url} className="w-full h-full object-cover" /> : <span className="w-full h-full flex items-center justify-center text-stone-300">📦</span>}
+                          {art.foto_url ? <img src={getOptimizedUrl(art.foto_url, 200)} className="w-full h-full object-cover" loading="lazy" /> : <span className="w-full h-full flex items-center justify-center text-stone-300">📦</span>}
                         </div>
                         <div className="flex-1 pr-2">
                           <p className="font-bold text-stone-800 text-sm leading-tight">{art.nombre}</p>
