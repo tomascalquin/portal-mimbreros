@@ -213,7 +213,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                     title="Ver vista previa de la vitrina"
                   >
                     <div className="w-16 h-16 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-100 flex items-center justify-center relative">
-                      {p.foto_url ? <img src={getOptimizedUrl(p.foto_url, 200)} className="w-full h-full object-cover" loading="lazy" /> : <span className="text-2xl text-stone-300">📦</span>}
+                      {p.foto_url ? <img src={getOptimizedUrl(p.foto_url, 400)} className="w-full h-full object-cover" loading="lazy" /> : <span className="text-2xl text-stone-300">📦</span>}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
                     </div>
                     <div className="flex-1">

@@ -752,7 +752,7 @@ export default function PestanaCompras({ miId }: any) {
                     return (
                       <div key={art.id} className="bg-white border border-stone-200 p-3 rounded-xl shadow-sm flex items-center justify-between hover:border-amber-300">
                         <div className="w-12 h-12 rounded-lg bg-stone-100 overflow-hidden shrink-0 border border-stone-200 mr-3">
-                          {art.foto_url ? <img src={getOptimizedUrl(art.foto_url, 200)} className="w-full h-full object-cover" loading="lazy" /> : <span className="w-full h-full flex items-center justify-center text-stone-300">📦</span>}
+                          {art.foto_url ? <img src={getOptimizedUrl(art.foto_url, 400)} className="w-full h-full object-cover" loading="lazy" /> : <span className="w-full h-full flex items-center justify-center text-stone-300">📦</span>}
                         </div>
                         <div className="flex-1 pr-2">
                           <p className="font-bold text-stone-800 text-sm leading-tight">{art.nombre}</p>
