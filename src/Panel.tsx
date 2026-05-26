@@ -18,8 +18,28 @@ export default function Panel() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setMiId(user.id);
-      const { data: local } = await supabase.from('tiendas').select('nombre_local').eq('id', user.id).single();
-      if (local) setNombreLocal(local.nombre_local || "Mi Taller");
+
+      // Buscar fila en tiendas
+      const { data: local, error } = await supabase
+        .from('tiendas')
+        .select('nombre_local')
+        .eq('id', user.id)
+        .single();
+
+      if (local) {
+        // Tienda existente: cargar nombre
+        setNombreLocal(local.nombre_local || 'Mi Taller');
+      } else if (error?.code === 'PGRST116' || !local) {
+        // No existe fila → crearla automáticamente para que las RLS funcionen
+        const emailBase = user.email?.split('@')[0] || 'Mi Taller';
+        const nombreInicial = emailBase.charAt(0).toUpperCase() + emailBase.slice(1);
+        await supabase.from('tiendas').upsert({
+          id: user.id,
+          nombre_local: nombreInicial,
+          telefono: '',
+        });
+        setNombreLocal(nombreInicial);
+      }
     }
   }
 
