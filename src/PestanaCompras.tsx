@@ -58,7 +58,7 @@ export default function PestanaCompras({ miId }: any) {
 
   async function cargarDatos() {
     const [{ data: listaArtesanos }, { data: listaArticulos }, { data: comprasMercaderia }] = await Promise.all([
-      supabase.from('artesanos').select('rut, nombre, telefono, correo, direccion, forma_pago, medio_pago').or(`tienda_id.eq.${miId},tienda_id.is.null`),
+      supabase.from('artesanos').select('rut, nombre, telefono, correo, direccion, medio_pago').or(`tienda_id.eq.${miId},tienda_id.is.null`),
       supabase.from('articulos_maestro').select('id, nombre, precio_costo, precio_venta, foto_url, foto_url_2, stock, rut_artesano, categoria_id, descripcion').eq('tienda_id', miId),
       supabase.from('registro_compras').select('id, fecha, total, rut_artesano, estado, detalle').eq('tienda_id', miId).order('fecha', { ascending: false }).limit(300),
     ]);
