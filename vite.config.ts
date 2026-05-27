@@ -17,9 +17,19 @@ export default defineConfig({
       manifest: {
         name: 'Mi Taller',
         short_name: 'Mi Taller',
+        start_url: '/admin',
+        scope: '/',
         theme_color: '#92400e',
         background_color: '#ffffff',
-        display: 'standalone'
+        display: 'standalone',
+        icons: [
+          {
+            src: '/icono_grande.jpg',
+            sizes: '512x512',
+            type: 'image/jpeg',
+            purpose: 'any maskable'
+          }
+        ]
       }
     })
   ],

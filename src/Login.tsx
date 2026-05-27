@@ -6,6 +6,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [codigoInvitacion, setCodigoInvitacion] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [recordarme, setRecordarme] = useState(true);
   const [modo, setModo] = useState('login');
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
 
@@ -41,6 +42,12 @@ export default function Login() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        // Guardar credenciales si el usuario quiere mantener sesión
+        if (recordarme) {
+          localStorage.setItem('sb_credenciales', JSON.stringify({ email, password }));
+        } else {
+          localStorage.removeItem('sb_credenciales');
+        }
       }
     } catch (error: any) {
       let errorTexto = error.message;
@@ -112,6 +119,18 @@ export default function Login() {
             <div className={`p-4 rounded-2xl text-xs font-bold text-center border ${mensaje.tipo === 'exito' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
               {mensaje.texto}
             </div>
+          )}
+
+          {modo === 'login' && (
+            <label className="flex items-center gap-3 cursor-pointer select-none mt-1">
+              <div
+                onClick={() => setRecordarme(r => !r)}
+                className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${recordarme ? 'bg-amber-700' : 'bg-stone-300'}`}
+              >
+                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${recordarme ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </div>
+              <span className="text-xs font-bold text-stone-500">Mantener sesión iniciada</span>
+            </label>
           )}
 
           <button type="submit" disabled={cargando} className="w-full bg-amber-800 text-white py-4 rounded-2xl font-bold shadow-lg shadow-amber-900/20 hover:bg-amber-900 active:scale-95 transition-all disabled:opacity-70 mt-4">

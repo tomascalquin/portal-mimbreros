@@ -57,12 +57,24 @@ export default function PestanaCompras({ miId }: any) {
   }
 
   async function cargarDatos() {
-    const [{ data: listaArtesanos }, { data: listaArticulos }, { data: comprasMercaderia }] = await Promise.all([
-      supabase.from('artesanos').select('rut, nombre, telefono, correo, direccion, medio_pago').or(`tienda_id.eq.${miId},tienda_id.is.null`),
+    const SELECT_ARTESANO = 'rut, nombre, telefono, correo, direccion, medio_pago';
+    const [
+      { data: listaArticulos },
+      { data: comprasMercaderia },
+      { data: artesanosPropios },
+      { data: artesanosGlobales },
+    ] = await Promise.all([
       supabase.from('articulos_maestro').select('id, nombre, precio_costo, precio_venta, foto_url, foto_url_2, stock, rut_artesano, categoria_id, descripcion').eq('tienda_id', miId),
       supabase.from('registro_compras').select('id, fecha, total, rut_artesano, estado, detalle').eq('tienda_id', miId).order('fecha', { ascending: false }).limit(300),
+      supabase.from('artesanos').select(SELECT_ARTESANO).eq('tienda_id', miId),
+      supabase.from('artesanos').select(SELECT_ARTESANO).is('tienda_id', null),
     ]);
-    if (listaArtesanos) setArtesanos(listaArtesanos);
+
+    // Fusionar artesanos propios + globales, evitando duplicados por rut
+    const todosArtesanos = [...(artesanosGlobales || []), ...(artesanosPropios || [])];
+    const sinDuplicados = todosArtesanos.filter((a, i, arr) => arr.findIndex(b => b.rut === a.rut) === i);
+    setArtesanos(sinDuplicados);
+
     if (listaArticulos) setArticulosMaestro(listaArticulos);
     if (comprasMercaderia) setHistorialCompras(comprasMercaderia);
   }

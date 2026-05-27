@@ -11,9 +11,26 @@ function App() {
   const [cargandoAuth, setCargandoAuth] = useState(true); 
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSesion(session);
-      setCargandoAuth(false);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        setSesion(session);
+        setCargandoAuth(false);
+      } else {
+        // Intentar auto-login si el usuario marcó "Recordarme"
+        const stored = localStorage.getItem('sb_credenciales');
+        if (stored) {
+          try {
+            const { email, password } = JSON.parse(stored);
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (!error && data.session) {
+              setSesion(data.session);
+            }
+          } catch {
+            localStorage.removeItem('sb_credenciales');
+          }
+        }
+        setCargandoAuth(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
