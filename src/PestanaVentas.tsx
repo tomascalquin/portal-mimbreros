@@ -36,7 +36,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
     catalogoUnificado, bancos, ventas, offsetSemana,
     periodo, offsetPeriodo, labelPeriodoActual,
     cargandoResumen, errorVentas, guardando, exito,
-    cargarVentas, cambiarSemana, cambiarPeriodo, cambiarOffset, registrarVenta,
+    cargarVentas, cambiarPeriodo, cambiarOffset, registrarVenta,
     agrupadoPorDia, calcularMetricas, totalSemana, totalEfectivo, totalTransferencia,
   } = useVentas(miId);
 

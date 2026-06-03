@@ -58,7 +58,6 @@ export function useVentas(miId: string) {
     const domingo = new Date(lunes);
     domingo.setDate(lunes.getDate() + 6);
     domingo.setHours(23, 59, 59, 999);
-    const fmt = (d: Date) => d.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short' });
     const label = offset === 0 ? 'Semana actual' : offset === -1 ? 'Semana pasada' : `Hace ${Math.abs(offset)} semanas`;
     return { inicio: lunes.toISOString(), fin: domingo.toISOString(), label };
   }

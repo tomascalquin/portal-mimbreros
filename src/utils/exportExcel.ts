@@ -1,11 +1,10 @@
 import * as XLSX from 'xlsx';
-import { formatCLP } from './fecha';
 import type { Periodo } from '../hooks/useVentas';
 
 export function exportarExcel(
   ventas: any[],
   bancos: any[],
-  periodo: Periodo,
+  _periodo: Periodo,
   label: string
 ) {
   if (ventas.length === 0) { alert('No hay ventas en este período para exportar.'); return; }
