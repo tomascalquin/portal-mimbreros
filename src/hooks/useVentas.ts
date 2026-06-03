@@ -3,16 +3,22 @@ import { supabase } from '../supabase';
 import type { EntidadBancaria, ProductoUnificado, LineaVenta, ResumenDia, ResumenLinea, MetodoPago } from '../types';
 import { fechaEnSantiago } from '../utils/fecha';
 
+export type Periodo = 'semana' | 'mes' | 'anio';
+
 export function useVentas(miId: string) {
   const [catalogoUnificado, setCatalogoUnificado] = useState<ProductoUnificado[]>([]);
   const [bancos, setBancos] = useState<EntidadBancaria[]>([]);
   const [ventas, setVentas] = useState<any[]>([]);
 
-  const [offsetSemana, setOffsetSemana] = useState(0);
+  const [periodo, setPeriodo] = useState<Periodo>('semana');
+  const [offsetPeriodo, setOffsetPeriodo] = useState(0);
   const [cargandoResumen, setCargandoResumen] = useState(false);
   const [errorVentas, setErrorVentas] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [exito, setExito] = useState(false);
+
+  // offsetSemana kept for backward compat (used in export functions)
+  const offsetSemana = periodo === 'semana' ? offsetPeriodo : 0;
 
   useEffect(() => {
     if (miId) {
@@ -40,11 +46,11 @@ export function useVentas(miId: string) {
     setCatalogoUnificado([...vitrinaMapped, ...comprasMapped]);
   }
 
-  // Calcula el rango lunes-domingo de la semana con el offset dado (en Supabase)
-  function rangoSemana(offset: number): { inicio: string; fin: string } {
-    const TZ = 'America/Santiago';
+  const TZ = 'America/Santiago';
+
+  function rangoSemana(offset: number): { inicio: string; fin: string; label: string } {
     const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
-    const dia = ahora.getDay(); // 0=dom, 1=lun ...
+    const dia = ahora.getDay();
     const diffLunes = (dia === 0 ? -6 : 1 - dia) + offset * 7;
     const lunes = new Date(ahora);
     lunes.setDate(ahora.getDate() + diffLunes);
@@ -52,14 +58,41 @@ export function useVentas(miId: string) {
     const domingo = new Date(lunes);
     domingo.setDate(lunes.getDate() + 6);
     domingo.setHours(23, 59, 59, 999);
-    return { inicio: lunes.toISOString(), fin: domingo.toISOString() };
+    const fmt = (d: Date) => d.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short' });
+    const label = offset === 0 ? 'Semana actual' : offset === -1 ? 'Semana pasada' : `Hace ${Math.abs(offset)} semanas`;
+    return { inicio: lunes.toISOString(), fin: domingo.toISOString(), label };
   }
 
-  async function cargarVentas(offset = 0) {
+  function rangoMes(offset: number): { inicio: string; fin: string; label: string } {
+    const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+    const año = ahora.getFullYear();
+    const mes = ahora.getMonth() + offset; // puede ser negativo, Date lo maneja
+    const primerDia = new Date(año, mes, 1, 0, 0, 0, 0);
+    const ultimoDia = new Date(año, mes + 1, 0, 23, 59, 59, 999);
+    const label = primerDia.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+    const labelCap = label.charAt(0).toUpperCase() + label.slice(1);
+    return { inicio: primerDia.toISOString(), fin: ultimoDia.toISOString(), label: labelCap };
+  }
+
+  function rangoAnio(offset: number): { inicio: string; fin: string; label: string } {
+    const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+    const año = ahora.getFullYear() + offset;
+    const inicio = new Date(año, 0, 1, 0, 0, 0, 0);
+    const fin = new Date(año, 11, 31, 23, 59, 59, 999);
+    return { inicio: inicio.toISOString(), fin: fin.toISOString(), label: String(año) };
+  }
+
+  function getRango(p: Periodo, offset: number) {
+    if (p === 'semana') return rangoSemana(offset);
+    if (p === 'mes') return rangoMes(offset);
+    return rangoAnio(offset);
+  }
+
+  // ─── 1 sola query por carga ──────────────────────────────────────────────
+  async function cargarVentas(offset = 0, p: Periodo = periodo) {
     setCargandoResumen(true);
     setErrorVentas(null);
-    const { inicio, fin } = rangoSemana(offset);
-    // Filtrar por semana directamente en Supabase — trae solo columnas necesarias
+    const { inicio, fin } = getRango(p, offset);
     const { data, error } = await supabase
       .from('ventas')
       .select('id, created_at, nombre_producto, cantidad, precio_unitario, total, metodo_pago, banco_id, producto_id')
@@ -71,17 +104,28 @@ export function useVentas(miId: string) {
       console.error('Error cargarVentas:', error);
       setErrorVentas(error.message);
     }
-    if (data) {
-      setVentas(data);
-    }
+    if (data) setVentas(data);
     setCargandoResumen(false);
   }
 
   const cambiarSemana = (nuevoOffset: number) => {
-    setOffsetSemana(nuevoOffset);
-    // Recarga desde Supabase con el nuevo rango — no descarga 1000 filas
-    cargarVentas(nuevoOffset);
+    setOffsetPeriodo(nuevoOffset);
+    cargarVentas(nuevoOffset, 'semana');
   };
+
+  const cambiarPeriodo = (nuevoPeriodo: Periodo) => {
+    setPeriodo(nuevoPeriodo);
+    setOffsetPeriodo(0);
+    cargarVentas(0, nuevoPeriodo);
+  };
+
+  const cambiarOffset = (nuevoOffset: number) => {
+    setOffsetPeriodo(nuevoOffset);
+    cargarVentas(nuevoOffset, periodo);
+  };
+
+  // Etiqueta del período actual
+  const labelPeriodoActual = getRango(periodo, offsetPeriodo).label;
 
   const registrarVenta = async (
     lineas: LineaVenta[],
@@ -96,7 +140,6 @@ export function useVentas(miId: string) {
     const dateObj = new Date(`${fechaVenta}T12:00:00`);
     const isoDate = dateObj.toISOString();
 
-    // Insertar todas las líneas de una sola vez (1 request en vez de N)
     const registros = lineas.map(linea => ({
       tienda_id: miId,
       producto_id: linea.origen === 'vitrina' && linea.producto_id != null ? linea.producto_id : null,
@@ -117,7 +160,6 @@ export function useVentas(miId: string) {
       return;
     }
 
-    // Actualizar stock en Supabase en paralelo (en vez de secuencial)
     const lineasConStock = lineas.filter(l => l.producto_id && l.origen !== 'manual');
     if (lineasConStock.length > 0) {
       await Promise.all(lineasConStock.map(linea => {
@@ -128,14 +170,12 @@ export function useVentas(miId: string) {
       }));
     }
 
-    // Actualizar stock en estado local sin recargar todo el catálogo desde Supabase
     setCatalogoUnificado(prev => prev.map(p => {
       const linea = lineas.find(l => l.producto_id === p.id && l.origen !== 'manual');
       if (linea && p.stock != null) return { ...p, stock: Math.max(0, p.stock - linea.cantidad) };
       return p;
     }));
 
-    // Agregar las nuevas ventas al estado local sin recargar todo desde Supabase
     const nuevasVentas = lineas.map(linea => ({
       id: crypto.randomUUID(),
       created_at: isoDate,
@@ -197,6 +237,62 @@ export function useVentas(miId: string) {
     return Object.values(map).sort((a, b) => b.fecha.localeCompare(a.fecha));
   };
 
+  // ─── Métricas (calculadas en frontend, 0 queries extra) ─────────────────
+  const calcularMetricas = () => {
+    if (ventas.length === 0) return null;
+
+    // Top productos por cantidad
+    const porCantidad: Record<string, { nombre: string; cantidad: number; total: number }> = {};
+    ventas.forEach(v => {
+      const k = v.nombre_producto;
+      if (!porCantidad[k]) porCantidad[k] = { nombre: k, cantidad: 0, total: 0 };
+      porCantidad[k].cantidad += v.cantidad;
+      porCantidad[k].total += v.total;
+    });
+    const topCantidad = Object.values(porCantidad).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5);
+    const topMonto = Object.values(porCantidad).sort((a, b) => b.total - a.total).slice(0, 5);
+
+    // Mejor día de la semana
+    const porDiaSemana: Record<number, { nombre: string; total: number; count: number }> = {};
+    const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    ventas.forEach(v => {
+      const d = new Date(v.created_at).getDay();
+      if (!porDiaSemana[d]) porDiaSemana[d] = { nombre: DIAS[d], total: 0, count: 0 };
+      porDiaSemana[d].total += v.total;
+      porDiaSemana[d].count++;
+    });
+    const mejorDia = Object.values(porDiaSemana).sort((a, b) => b.total - a.total)[0] || null;
+
+    // Totales
+    const totalPeriodo = ventas.reduce((s, v) => s + v.total, 0);
+    const totalEfectivo = ventas.filter(v => v.metodo_pago === 'Efectivo').reduce((s, v) => s + v.total, 0);
+    const totalTransferencia = ventas.filter(v => v.metodo_pago === 'Transferencia').reduce((s, v) => s + v.total, 0);
+    const numTransacciones = ventas.length;
+    const ticketPromedio = numTransacciones > 0 ? totalPeriodo / numTransacciones : 0;
+
+    // Días únicos con ventas
+    const diasUnicos = new Set(ventas.map(v => fechaEnSantiago(v.created_at))).size;
+    const ventasPorDia = diasUnicos > 0 ? numTransacciones / diasUnicos : 0;
+
+    const pctEfectivo = totalPeriodo > 0 ? (totalEfectivo / totalPeriodo) * 100 : 0;
+    const pctTransferencia = totalPeriodo > 0 ? (totalTransferencia / totalPeriodo) * 100 : 0;
+
+    return {
+      topCantidad,
+      topMonto,
+      mejorDia,
+      totalPeriodo,
+      totalEfectivo,
+      totalTransferencia,
+      numTransacciones,
+      ticketPromedio,
+      diasUnicos,
+      ventasPorDia,
+      pctEfectivo,
+      pctTransferencia,
+    };
+  };
+
   const totalSemana = ventas.reduce((s, v) => s + v.total, 0);
   const totalEfectivo = ventas.filter(v => v.metodo_pago === 'Efectivo').reduce((s, v) => s + v.total, 0);
   const totalTransferencia = ventas.filter(v => v.metodo_pago === 'Transferencia').reduce((s, v) => s + v.total, 0);
@@ -205,15 +301,21 @@ export function useVentas(miId: string) {
     catalogoUnificado,
     bancos,
     ventas,
+    periodo,
+    offsetPeriodo,
     offsetSemana,
+    labelPeriodoActual,
     cargandoResumen,
     errorVentas,
     guardando,
     exito,
     cargarVentas,
     cambiarSemana,
+    cambiarPeriodo,
+    cambiarOffset,
     registrarVenta,
     agrupadoPorDia,
+    calcularMetricas,
     totalSemana,
     totalEfectivo,
     totalTransferencia,

@@ -4,8 +4,11 @@ import { getOptimizedUrl } from './supabase';
 import { formatCLP, formatFecha, calcularSemana, hoyEnSantiago, TZ } from './utils/fecha';
 import { BADGE } from './utils/badge';
 import { useVentas } from './hooks/useVentas';
+import type { Periodo } from './hooks/useVentas';
 import TarjetaDia from './components/ventas/TarjetaDia';
 import ModalGestionarDia from './components/ventas/ModalGestionarDia';
+import SeccionMetricas from './components/ventas/SeccionMetricas';
+import { exportarExcel } from './utils/exportExcel';
 
 export default function PestanaVentas({ miId }: { miId: string }) {
   const [vista, setVista] = useState<'pos' | 'resumen'>('pos');
@@ -31,10 +34,13 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
   const {
     catalogoUnificado, bancos, ventas, offsetSemana,
+    periodo, offsetPeriodo, labelPeriodoActual,
     cargandoResumen, errorVentas, guardando, exito,
-    cargarVentas, cambiarSemana, registrarVenta,
-    agrupadoPorDia, totalSemana, totalEfectivo, totalTransferencia,
+    cargarVentas, cambiarSemana, cambiarPeriodo, cambiarOffset, registrarVenta,
+    agrupadoPorDia, calcularMetricas, totalSemana, totalEfectivo, totalTransferencia,
   } = useVentas(miId);
+
+  const metricas = calcularMetricas();
 
   const bancoDefault = bancos[0]?.id ?? '';
   const bancoPagando = entidadBancariaId || bancoDefault;
@@ -146,7 +152,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
       <div className="flex bg-stone-200 p-1.5 rounded-xl">
         <button onClick={() => setVista('pos')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${vista === 'pos' ? 'bg-white shadow text-stone-900' : 'text-stone-500'}`}>Registrar Venta</button>
-        <button onClick={() => { setVista('resumen'); cargarVentas(offsetSemana); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${vista === 'resumen' ? 'bg-white shadow text-stone-900' : 'text-stone-500'}`}>Resumen Semanal</button>
+        <button onClick={() => { setVista('resumen'); cargarVentas(offsetSemana); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${vista === 'resumen' ? 'bg-white shadow text-stone-900' : 'text-stone-500'}`}>Resumen</button>
       </div>
 
       {/* ═══════════════ VISTA POS ═══════════════ */}
@@ -394,29 +400,65 @@ export default function PestanaVentas({ miId }: { miId: string }) {
       {/* ═══════════════ VISTA RESUMEN ═══════════════ */}
       {vista === 'resumen' && (
         <div className="space-y-4 pb-10">
-          {(() => {
-            const { inicio, fin } = calcularSemana(offsetSemana);
-            const esActual = offsetSemana === 0;
-            const label = esActual ? 'Semana actual' : offsetSemana === -1 ? 'Semana pasada' : `Hace ${Math.abs(offsetSemana)} semanas`;
-            return (
-              <div className="bg-stone-800 text-white rounded-2xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                  <button onClick={() => cambiarSemana(offsetSemana - 1)} className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 rounded-xl font-bold text-lg transition-colors active:scale-95">←</button>
-                  <div className="text-center"><p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">{label}</p><p className="font-bold text-sm mt-0.5">{inicio.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short' })} — {fin.toLocaleDateString('es-CL', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' })}</p></div>
-                  <button onClick={() => cambiarSemana(offsetSemana + 1)} disabled={esActual} className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-lg transition-colors active:scale-95">→</button>
-                </div>
-                {!esActual && <button onClick={() => cambiarSemana(0)} className="w-full text-center text-amber-300 text-xs font-bold py-2 hover:text-amber-200 transition-colors border-t border-stone-700">Volver a semana actual</button>}
-                {esActual && <div className="pb-2" />}
-              </div>
-            );
-          })()}
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-center"><p className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-1">💵 Efectivo</p><p className="font-black text-green-800 text-base">{formatCLP(totalEfectivo)}</p></div>
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center"><p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-1">🏦 Transf.</p><p className="font-black text-blue-800 text-base">{formatCLP(totalTransferencia)}</p></div>
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center"><p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">✅ Total</p><p className="font-black text-amber-800 text-base">{formatCLP(totalSemana)}</p></div>
+          {/* ── Selector de período ── */}
+          <div className="flex bg-stone-100 p-1 rounded-xl gap-1">
+            {(['semana', 'mes', 'anio'] as Periodo[]).map(p => (
+              <button
+                key={p}
+                onClick={() => cambiarPeriodo(p)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  periodo === p ? 'bg-white shadow text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                }`}
+              >
+                {p === 'semana' ? '📅 Semana' : p === 'mes' ? '🗓 Mes' : '📆 Año'}
+              </button>
+            ))}
           </div>
 
+          {/* ── Navegador ← → ── */}
+          <div className="bg-stone-800 text-white rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 pt-4 pb-3">
+              <button
+                onClick={() => cambiarOffset(offsetPeriodo - 1)}
+                className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 rounded-xl font-bold text-lg transition-colors active:scale-95"
+              >←</button>
+              <div className="text-center">
+                <p className="font-bold text-sm">{labelPeriodoActual}</p>
+              </div>
+              <button
+                onClick={() => cambiarOffset(offsetPeriodo + 1)}
+                disabled={offsetPeriodo === 0}
+                className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-lg transition-colors active:scale-95"
+              >→</button>
+            </div>
+            {offsetPeriodo < 0 && (
+              <button
+                onClick={() => cambiarOffset(0)}
+                className="w-full text-center text-amber-300 text-xs font-bold py-2 hover:text-amber-200 transition-colors border-t border-stone-700"
+              >
+                Volver al período actual
+              </button>
+            )}
+          </div>
+
+          {/* ── Totales ── */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-1">💵 Efectivo</p>
+              <p className="font-black text-green-800 text-sm leading-tight">{formatCLP(totalEfectivo)}</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-1">🏦 Transf.</p>
+              <p className="font-black text-blue-800 text-sm leading-tight">{formatCLP(totalTransferencia)}</p>
+            </div>
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">✅ Total</p>
+              <p className="font-black text-amber-800 text-sm leading-tight">{formatCLP(totalSemana)}</p>
+            </div>
+          </div>
+
+          {/* ── Desglose bancos ── */}
           {(() => {
             const desglose: Record<string, { nombre: string; total: number }> = {};
             ventas.filter(v => v.metodo_pago === 'Transferencia').forEach(v => {
@@ -428,21 +470,74 @@ export default function PestanaVentas({ miId }: { miId: string }) {
             });
             const entradas = Object.entries(desglose);
             if (entradas.length === 0) return null;
-            return (<div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2"><p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencias por cuenta (semana)</p>{entradas.map(([key, info]) => (<div key={key} className="flex justify-between items-center bg-white border border-blue-100 rounded-xl px-3 py-2"><span className="text-sm font-bold text-blue-800">{info.nombre}</span><span className="font-black text-blue-900 text-sm">{formatCLP(info.total)}</span></div>))}</div>);
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
+                <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencias por cuenta</p>
+                {entradas.map(([key, info]) => (
+                  <div key={key} className="flex justify-between items-center bg-white border border-blue-100 rounded-xl px-3 py-2">
+                    <span className="text-sm font-bold text-blue-800">{info.nombre}</span>
+                    <span className="font-black text-blue-900 text-sm">{formatCLP(info.total)}</span>
+                  </div>
+                ))}
+              </div>
+            );
           })()}
 
-          {cargandoResumen ? <p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p> : errorVentas ? (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center space-y-2"><span className="text-2xl block">⚠️</span><p className="font-bold text-red-700 text-sm">Error al cargar ventas</p><p className="text-red-600 text-xs font-mono break-all">{errorVentas}</p><button onClick={() => cargarVentas(offsetSemana)} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-xs">Reintentar</button></div>
+          {/* ── Métricas inteligentes ── */}
+          {metricas && <SeccionMetricas m={metricas} />}
+
+          {/* ── Detalle por día (solo en modo semana) ── */}
+          {cargandoResumen ? (
+            <p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p>
+          ) : errorVentas ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center space-y-2">
+              <span className="text-2xl block">⚠️</span>
+              <p className="font-bold text-red-700 text-sm">Error al cargar ventas</p>
+              <p className="text-red-600 text-xs font-mono break-all">{errorVentas}</p>
+              <button onClick={() => cargarVentas(offsetPeriodo)} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-xs">Reintentar</button>
+            </div>
           ) : agrupadoPorDia().length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center"><span className="text-3xl block mb-2">📭</span><p className="text-stone-400 font-bold text-sm">Sin ventas esta semana.</p></div>
+            <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center">
+              <span className="text-3xl block mb-2">📭</span>
+              <p className="text-stone-400 font-bold text-sm">Sin ventas en este período.</p>
+            </div>
+          ) : periodo === 'semana' ? (
+            <div className="space-y-3">
+              <h3 className="font-bold text-stone-500 text-xs uppercase tracking-widest">Detalle por Día</h3>
+              {agrupadoPorDia().map(d => <TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />)}
+            </div>
           ) : (
-            <div className="space-y-3"><h3 className="font-bold text-stone-500 text-sm uppercase tracking-widest">Detalle por Día</h3>{agrupadoPorDia().map(d => <TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />)}</div>
+            <div className="bg-white border border-stone-200 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3">📅 Días con ventas en el período</p>
+              <div className="space-y-1.5">
+                {agrupadoPorDia().map(d => (
+                  <div key={d.fecha} className="flex justify-between items-center py-1.5 border-b border-stone-100 last:border-0">
+                    <span className="text-sm font-bold text-stone-700">{formatFecha(d.fecha)}</span>
+                    <div className="text-right">
+                      <span className="font-black text-amber-700 text-sm">{formatCLP(d.total)}</span>
+                      <span className="text-[10px] text-stone-400 ml-2">{d.ventas} tx</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
+          {/* ── Botones de exportación ── */}
           <div className="space-y-2 pt-2">
-            <button onClick={exportarPDF} className="w-full bg-stone-800 hover:bg-stone-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"><span>📄</span> Exportar a PDF</button>
-            <button onClick={compartirWhatsapp} className="w-full bg-[#25D366] hover:bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"><span>💬</span> Compartir por WhatsApp</button>
-            <button onClick={() => cargarVentas(offsetSemana)} className="w-full bg-stone-100 text-stone-600 py-3.5 rounded-2xl font-bold text-sm hover:bg-stone-200">🔄 Actualizar datos</button>
+            <button
+              onClick={() => exportarExcel(ventas, bancos, periodo, labelPeriodoActual)}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"
+            >
+              <span>📊</span> Exportar Excel
+            </button>
+            {periodo === 'semana' && (
+              <>
+                <button onClick={exportarPDF} className="w-full bg-stone-800 hover:bg-stone-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"><span>📄</span> Exportar PDF</button>
+                <button onClick={compartirWhatsapp} className="w-full bg-[#25D366] hover:bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"><span>💬</span> Compartir WhatsApp</button>
+              </>
+            )}
+            <button onClick={() => cargarVentas(offsetPeriodo)} className="w-full bg-stone-100 text-stone-600 py-3.5 rounded-2xl font-bold text-sm hover:bg-stone-200">🔄 Actualizar datos</button>
           </div>
         </div>
       )}
