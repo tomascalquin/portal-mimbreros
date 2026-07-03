@@ -446,10 +446,16 @@ export default function PestanaCompras({ miId }: any) {
                           <p className="text-[#C26B29] font-black mt-1">${art.precio_costo.toLocaleString('es-CL')}</p>
                         </div>
                         <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center bg-stone-100 rounded-full p-1 border border-stone-200">
-                            <button onClick={() => cambiarCantidad(art.id, -1)} className="w-6 h-6 flex items-center justify-center font-bold text-stone-500">-</button>
-                            <span className="w-6 text-center font-bold text-xs">{carrito[art.id] || 0}</span>
-                            <button onClick={() => cambiarCantidad(art.id, 1)} className="w-6 h-6 flex items-center justify-center font-bold text-stone-500">+</button>
+                          <div className="flex items-center bg-stone-100 rounded-2xl overflow-hidden border border-stone-200 shadow-sm">
+                            <button
+                              onClick={() => cambiarCantidad(art.id, -1)}
+                              className="w-10 h-10 flex items-center justify-center font-bold text-stone-600 text-lg hover:bg-stone-200 active:bg-stone-300 transition-colors"
+                            >−</button>
+                            <span className="w-8 text-center font-bold text-sm text-stone-800">{carrito[art.id] || 0}</span>
+                            <button
+                              onClick={() => cambiarCantidad(art.id, 1)}
+                              className="w-10 h-10 flex items-center justify-center font-bold text-amber-700 text-lg hover:bg-amber-50 active:bg-amber-100 transition-colors"
+                            >+</button>
                           </div>
                           <span className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Cant</span>
                         </div>
@@ -706,6 +712,7 @@ export default function PestanaCompras({ miId }: any) {
                       <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Costo ($)</label>
                       <input 
                         type="number" 
+                        inputMode="decimal"
                         required 
                         value={formArtCosto} 
                         onChange={(e) => setFormArtCosto(e.target.value)} 
@@ -716,6 +723,7 @@ export default function PestanaCompras({ miId }: any) {
                       <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Stock</label>
                       <input 
                         type="number" 
+                        inputMode="decimal"
                         required 
                         value={formArtStock} 
                         onChange={(e) => setFormArtStock(e.target.value)} 

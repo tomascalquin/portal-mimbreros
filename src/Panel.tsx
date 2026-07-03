@@ -5,8 +5,17 @@ import PestanaCompras from './PestanaCompras';
 import PestanaLocal from './PestanaLocal';
 import PestanaVentas from './PestanaVentas';
 
+const TABS = [
+  { id: 'catalogo', icon: '📦', label: 'Catálogo' },
+  { id: 'compras',  icon: '📝', label: 'Compras'  },
+  { id: 'ventas',   icon: '💰', label: 'Ventas'   },
+  { id: 'local',    icon: '🏪', label: 'Mi Local' },
+] as const;
+
+type TabId = typeof TABS[number]['id'];
+
 export default function Panel() {
-  const [pestana, setPestana] = useState('compras');
+  const [pestana, setPestana] = useState<TabId>('compras');
   const [miId, setMiId] = useState('');
   const [nombreLocal, setNombreLocal] = useState('');
 
@@ -18,8 +27,6 @@ export default function Panel() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setMiId(user.id);
-
-      // Buscar fila en tiendas
       const { data: local, error } = await supabase
         .from('tiendas')
         .select('nombre_local')
@@ -27,56 +34,73 @@ export default function Panel() {
         .single();
 
       if (local) {
-        // Tienda existente: cargar nombre
         setNombreLocal(local.nombre_local || 'Mi Taller');
       } else if (error?.code === 'PGRST116' || !local) {
-        // No existe fila → crearla automáticamente para que las RLS funcionen
         const emailBase = user.email?.split('@')[0] || 'Mi Taller';
         const nombreInicial = emailBase.charAt(0).toUpperCase() + emailBase.slice(1);
-        await supabase.from('tiendas').upsert({
-          id: user.id,
-          nombre_local: nombreInicial,
-          telefono: '',
-        });
+        await supabase.from('tiendas').upsert({ id: user.id, nombre_local: nombreInicial, telefono: '' });
         setNombreLocal(nombreInicial);
       }
     }
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#FDFCF8] font-sans text-stone-900 pb-28">
-      
-      {/* CABECERA (NO SE IMPRIME) */}
-      <header className="print:hidden bg-amber-800 text-white p-6 shadow-md flex justify-between items-center rounded-b-[2rem]">
+    <div className="flex flex-col min-h-screen bg-[#FDFCF8] text-stone-900 pb-[var(--nav-h)]">
+
+      {/* ── CABECERA COMPACTA ── */}
+      <header className="print:hidden bg-gradient-to-r from-amber-900 to-amber-800 text-white shadow-md flex items-center justify-between px-4 rounded-b-3xl"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)', paddingBottom: '14px' }}
+      >
         <div>
-          <p className="text-amber-200 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Gestión Artesanal</p>
-          <h1 className="text-2xl font-bold">{nombreLocal}</h1>
+          <p className="text-amber-300 text-[9px] font-bold uppercase tracking-[0.25em] mb-0.5 leading-none">
+            Gestión Artesanal
+          </p>
+          <h1 className="text-xl font-bold leading-tight tracking-tight">{nombreLocal}</h1>
         </div>
-        <button onClick={() => supabase.auth.signOut()} className="bg-amber-900 hover:bg-amber-950 p-2 px-4 rounded-xl text-xs font-bold transition-all shadow-sm">Salir</button>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="bg-amber-950/60 hover:bg-amber-950 border border-amber-700/50 text-amber-200 text-xs font-bold px-3 py-2 rounded-xl transition-all active:scale-95"
+        >
+          Salir
+        </button>
       </header>
 
-      {/* ÁREA PRINCIPAL DONDE SE CARGAN LAS PIEZAS */}
+      {/* ── ÁREA PRINCIPAL ── */}
       <main className="flex-1 p-4 max-w-lg mx-auto w-full mt-2">
         {pestana === 'catalogo' && <PestanaCatalogo miId={miId} nombreLocal={nombreLocal} />}
-        {pestana === 'compras' && <PestanaCompras miId={miId} />}
-        {pestana === 'ventas' && <PestanaVentas miId={miId} />}
-        {pestana === 'local' && <PestanaLocal miId={miId} nombreLocal={nombreLocal} setNombreLocal={setNombreLocal} />}
+        {pestana === 'compras'  && <PestanaCompras  miId={miId} />}
+        {pestana === 'ventas'   && <PestanaVentas   miId={miId} />}
+        {pestana === 'local'    && <PestanaLocal    miId={miId} nombreLocal={nombreLocal} setNombreLocal={setNombreLocal} />}
       </main>
 
-      {/* MENÚ INFERIOR (NO SE IMPRIME) */}
-      <nav className="print:hidden fixed bottom-0 w-full bg-white border-t border-stone-200 flex shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40" style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}>
-        <button onClick={() => setPestana('catalogo')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'catalogo' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
-          <span className="text-xl">📦</span>Catálogo
-        </button>
-        <button onClick={() => setPestana('compras')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'compras' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
-          <span className="text-xl">📝</span>Compras
-        </button>
-        <button onClick={() => setPestana('ventas')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'ventas' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
-          <span className="text-xl">💰</span>Ventas
-        </button>
-        <button onClick={() => setPestana('local')} className={`flex-1 py-3 flex flex-col items-center gap-1 font-bold text-xs transition-colors ${pestana === 'local' ? 'text-amber-700 border-t-4 border-amber-700 bg-amber-50' : 'text-stone-400 hover:bg-stone-50'}`}>
-          <span className="text-xl">🏪</span>Mi Local
-        </button>
+      {/* ── NAVBAR INFERIOR MEJORADO ── */}
+      <nav
+        className="print:hidden fixed bottom-0 w-full bg-white/95 backdrop-blur-sm border-t border-stone-200/80 flex shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-40"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        {TABS.map(tab => {
+          const activo = pestana === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setPestana(tab.id)}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-2 pb-2 transition-all active:scale-95 ${
+                activo ? 'text-amber-700' : 'text-stone-400'
+              }`}
+            >
+              <span className={`text-2xl leading-none transition-transform ${activo ? 'scale-110' : 'scale-100'}`}>
+                {tab.icon}
+              </span>
+              <span className={`text-[10px] font-bold leading-none transition-all ${activo ? 'text-amber-700' : 'text-stone-400'}`}>
+                {tab.label}
+              </span>
+              {/* Pill indicator */}
+              <span className={`mt-1 h-1 rounded-full transition-all duration-300 ${
+                activo ? 'w-5 bg-amber-700' : 'w-0 bg-transparent'
+              }`} />
+            </button>
+          );
+        })}
       </nav>
     </div>
   );

@@ -228,8 +228,19 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                   </div>
 
                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 mt-1 sm:mt-0 border-stone-100">
-                    <button onClick={(e) => abrirParaEditar(p, e)} className="px-4 py-2 bg-stone-100 rounded-lg text-stone-600 font-bold text-sm hover:bg-stone-200 transition-colors">Editar</button>
-                    <button onClick={(e) => eliminarProducto(p.id, p.nombre, e)} className="px-4 py-2 bg-red-50 text-red-500 rounded-lg font-bold text-sm hover:bg-red-100 transition-colors">Borrar</button>
+                    <button
+                      onClick={(e) => abrirParaEditar(p, e)}
+                      className="flex-1 sm:flex-none px-4 py-2.5 bg-stone-100 rounded-xl text-stone-700 font-bold text-sm hover:bg-stone-200 active:scale-95 transition-all"
+                    >
+                      ✏️ Editar
+                    </button>
+                    <button
+                      onClick={(e) => eliminarProducto(p.id, p.nombre, e)}
+                      className="px-3 py-2.5 bg-red-50 text-red-500 rounded-xl font-bold text-sm hover:bg-red-100 active:scale-95 transition-all border border-red-100"
+                      title="Eliminar producto"
+                    >
+                      🗑️
+                    </button>
                   </div>
                 </div>
               );

@@ -320,6 +320,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                 <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Precio de Venta ($)</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   value={popup.precio}
                   onChange={e => setPopup(p => p ? { ...p, precio: e.target.value } : p)}
                   className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 font-black text-amber-800 text-2xl focus:outline-none focus:border-amber-500 h-12"
@@ -364,7 +365,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Precio ($)</label>
-                  <input type="number" value={manualPrecio} onChange={e => setManualPrecio(e.target.value)} placeholder="0" className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 font-black text-amber-800 text-lg focus:outline-none focus:border-amber-500 h-11" />
+                  <input type="number" inputMode="decimal" value={manualPrecio} onChange={e => setManualPrecio(e.target.value)} placeholder="0" className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 font-black text-amber-800 text-lg focus:outline-none focus:border-amber-500 h-11" />
                 </div>
               </div>
               <button onClick={agregarManual} className="w-full bg-stone-800 hover:bg-stone-900 text-white py-3.5 rounded-xl font-bold text-sm transition-colors">+ Agregar al ticket</button>

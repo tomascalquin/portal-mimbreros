@@ -2,12 +2,12 @@
 
 @layer base {
   /* ── Variable global: altura total del navbar inferior ──
-     68px = altura visual del navbar (py-3 × 2 + ícono + texto)
-     env(safe-area-inset-bottom) = home indicator iPhone (0px en Android/iPhone sin notch)
-     8px = margen extra para que el botón flotante respire
+     64px = altura visual del navbar mejorado
+     env(safe-area-inset-bottom) = home indicator iPhone
+     8px = margen extra para el botón flotante
   */
   :root {
-    --nav-h: calc(68px + env(safe-area-inset-bottom, 0px) + 8px);
+    --nav-h: calc(64px + env(safe-area-inset-bottom, 0px) + 8px);
   }
 
   html {
@@ -15,6 +15,7 @@
   }
 
   body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: #1c1917;
@@ -30,20 +31,33 @@
     -webkit-user-select: text;
     user-select: text;
     -webkit-touch-callout: default;
+    /* Fuente consistente en inputs de iOS */
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   button {
     cursor: pointer;
     touch-action: manipulation;
   }
+
+  /* Mínimo 44px de área táctil para iOS (Apple HIG) */
+  button, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Excepción: botones pequeños en grid de acciones (✕, editar...) */
+  .btn-sm {
+    min-height: unset;
+  }
 }
 
+/* ── Animaciones ── */
 .fade-in {
-  animation: fadeIn 0.25s ease-out;
+  animation: fadeIn 0.22s ease-out;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -54,4 +68,13 @@
 @keyframes slideUp {
   from { transform: translateY(100%); opacity: 0.5; }
   to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Feedback táctil estándar para botones de acción */
+.tap-active {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+.tap-active:active {
+  transform: scale(0.96);
+  opacity: 0.85;
 }
