@@ -228,15 +228,26 @@ export default function Vitrina() {
         </div>
       )}
 
-      <header className="bg-amber-800 text-white p-6 shadow-md rounded-b-[2rem] text-center mb-6 relative">
-        <p className="text-amber-200 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Catálogo Oficial</p>
-        <h1 className="text-2xl font-serif italic font-bold">{tienda.nombre_local || 'Mi Vitrina'}</h1>
+      <header className="relative text-white mb-6 overflow-hidden rounded-b-[2.5rem] shadow-xl"
+        style={{ background: 'linear-gradient(135deg, #78350f 0%, #92400e 50%, #b45309 100%)' }}
+      >
+        {/* Patrón decorativo sutil */}
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        <div className="relative z-10 px-6 py-8 text-center">
+          <p className="text-amber-200/80 text-[10px] font-bold uppercase tracking-[0.3em] mb-2">Catálogo Oficial</p>
+          <h1 className="text-3xl font-bold tracking-tight drop-shadow-sm">{tienda.nombre_local || 'Mi Vitrina'}</h1>
+          <div className="flex items-center justify-center gap-2 mt-3">
+            <div className="h-px w-12 bg-amber-400/40 rounded-full" />
+            <span className="text-amber-300/70 text-[10px] font-bold uppercase tracking-widest">Artesanías en Mimbre</span>
+            <div className="h-px w-12 bg-amber-400/40 rounded-full" />
+          </div>
+        </div>
         <a
           href="/admin"
-          className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-amber-900/60 hover:bg-amber-900 active:scale-95 backdrop-blur-sm text-amber-100 text-[11px] font-bold px-3 py-1.5 rounded-full border border-amber-600/40 shadow-sm transition-all"
+          className="absolute top-4 right-4 z-20 flex items-center gap-1.5 bg-black/20 hover:bg-black/40 active:scale-95 backdrop-blur-sm text-amber-100 text-[11px] font-bold px-3 py-1.5 rounded-full border border-white/10 shadow-sm transition-all"
         >
           <span className="text-sm">🔐</span>
-          <span className="hidden sm:inline">Iniciar sesión</span>
+          <span className="hidden sm:inline">Acceso</span>
         </a>
       </header>
 
@@ -311,22 +322,40 @@ export default function Vitrina() {
                   </div>
                 )}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {grupo.items.map(p => (
-                    <div key={p.id} onClick={() => abrirDetalle(p)}
-                      className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm flex flex-col h-full hover:shadow-md transition-shadow cursor-pointer"
+                  {grupo.items.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      onClick={() => abrirDetalle(p)}
+                      className="group bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm flex flex-col h-full cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:border-amber-200 active:scale-[0.97]"
+                      style={{ animation: 'cardEntrance 0.4s ease-out both', animationDelay: `${idx * 60}ms` }}
                     >
-                      <div className="aspect-square bg-stone-100 shrink-0">
+                      {/* Imagen */}
+                      <div className="aspect-square bg-stone-100 shrink-0 overflow-hidden relative">
                         {p.foto_url
-                          ? <img src={getOptimizedUrl(p.foto_url, 400)} alt={p.nombre} className="w-full h-full object-cover" loading="lazy" />
-                          : <div className="w-full h-full flex items-center justify-center text-4xl">📦</div>
+                          ? <img src={getOptimizedUrl(p.foto_url, 400)} alt={p.nombre} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                          : <div className="w-full h-full flex items-center justify-center text-4xl text-stone-300">📦</div>
                         }
+                        {/* Badge sin stock */}
+                        {p.stock === 0 && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <span className="bg-white/90 text-stone-700 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow">Sin stock</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="p-3 sm:p-4 flex-1 flex flex-col">
-                        <h3 className="text-xs sm:text-sm font-bold text-stone-800 leading-tight line-clamp-2 min-h-[36px] sm:min-h-[40px] mb-3">
+                      {/* Contenido */}
+                      <div className="p-3 flex-1 flex flex-col gap-2">
+                        <h3 className="text-xs sm:text-sm font-bold text-stone-800 leading-tight line-clamp-2">
                           {p.nombre}
                         </h3>
-                        <button onClick={(e) => agregarACotizacion(p, e)}
-                          className="mt-auto w-full bg-amber-100 text-amber-900 py-2.5 rounded-xl font-bold text-[10px] sm:text-xs shadow-sm hover:bg-amber-200 active:scale-95 transition-all flex justify-center items-center gap-1.5"
+                        {p.precio > 0 && (
+                          <p className="text-sm font-black text-amber-700">
+                            ${p.precio.toLocaleString('es-CL')}
+                          </p>
+                        )}
+                        <button
+                          onClick={(e) => agregarACotizacion(p, e)}
+                          disabled={p.stock === 0}
+                          className="mt-auto w-full bg-amber-100 text-amber-900 py-2.5 rounded-xl font-bold text-[10px] sm:text-xs hover:bg-amber-700 hover:text-white active:scale-95 transition-all flex justify-center items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <span className="text-sm">➕</span> Añadir
                         </button>
@@ -468,10 +497,10 @@ export default function Vitrina() {
                     <div className="flex-1 pr-4">
                       <p className="font-bold text-sm text-stone-800 line-clamp-2">{item.nombre}</p>
                     </div>
-                    <div className="flex items-center gap-3 bg-white border border-stone-200 rounded-lg p-1">
-                      <button onClick={() => ajustarCantidad(item.id, -1)} className="w-8 h-8 flex items-center justify-center text-stone-500 hover:bg-stone-100 rounded-md font-bold">-</button>
-                      <span className="w-4 text-center text-sm font-bold text-stone-800">{item.cantidad}</span>
-                      <button onClick={() => ajustarCantidad(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-stone-500 hover:bg-stone-100 rounded-md font-bold">+</button>
+                    <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                      <button onClick={() => ajustarCantidad(item.id, -1)} className="w-10 h-10 flex items-center justify-center text-stone-600 hover:bg-stone-100 active:bg-stone-200 font-bold text-lg transition-colors">−</button>
+                      <span className="w-6 text-center text-sm font-bold text-stone-800">{item.cantidad}</span>
+                      <button onClick={() => ajustarCantidad(item.id, 1)} className="w-10 h-10 flex items-center justify-center text-amber-700 hover:bg-amber-50 active:bg-amber-100 font-bold text-lg transition-colors">+</button>
                     </div>
                   </div>
                 ))
