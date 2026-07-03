@@ -7,8 +7,52 @@ interface TarjetaDiaProps {
   onGestionar: (d: ResumenDia) => void;
 }
 
+interface TicketAgrupado {
+  ventaId: string;
+  metodo: string;
+  bancoId: string | null;
+  items: any[];
+  total: number;
+  hora: string;
+}
+
+function agruparPorVentaId(ventasOriginales: any[]): TicketAgrupado[] {
+  const map: Record<string, TicketAgrupado> = {};
+
+  // Ordenar por fecha ascendente para que #1 sea el más antiguo del día
+  const ordenadas = [...ventasOriginales].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  ordenadas.forEach(v => {
+    const key = v.venta_id || v.id;
+    if (!map[key]) {
+      const d = new Date(v.created_at);
+      const hora = d.toLocaleTimeString('es-CL', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago',
+      });
+      map[key] = {
+        ventaId: key,
+        metodo: v.metodo_pago,
+        bancoId: v.banco_id,
+        items: [],
+        total: 0,
+        hora,
+      };
+    }
+    map[key].items.push(v);
+    map[key].total += v.total;
+  });
+
+  return Object.values(map);
+}
+
 export default function TarjetaDia({ dia, onGestionar }: TarjetaDiaProps) {
   const [expandido, setExpandido] = useState(false);
+
+  const tickets = agruparPorVentaId(dia.ventasOriginales);
+  const ticketsEfectivo = tickets.filter(t => t.metodo === 'Efectivo');
+  const ticketsTransferencia = tickets.filter(t => t.metodo === 'Transferencia');
 
   return (
     <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
@@ -27,7 +71,9 @@ export default function TarjetaDia({ dia, onGestionar }: TarjetaDiaProps) {
               ⚙️ Gestionar
             </span>
           </div>
-          <p className="text-stone-400 text-xs mt-0.5">{dia.ventas} venta{dia.ventas !== 1 ? 's' : ''} · toca para ver detalle</p>
+          <p className="text-stone-400 text-xs mt-0.5">
+            {dia.ventas} venta{dia.ventas !== 1 ? 's' : ''} · toca para ver detalle
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <span className="font-black text-stone-800 text-lg">{formatCLP(dia.total)}</span>
@@ -51,27 +97,48 @@ export default function TarjetaDia({ dia, onGestionar }: TarjetaDiaProps) {
         )}
       </div>
 
-      {/* DESGLOSE EXPANDIBLE */}
+      {/* DESGLOSE EXPANDIBLE — por ticket */}
       {expandido && (
         <div className="border-t border-stone-100 animate-in fade-in slide-in-from-top-1">
 
           {/* ── EFECTIVO ── */}
-          {dia.lineasEfectivo.length > 0 && (
-            <div className="px-4 pt-3 pb-2">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+          {ticketsEfectivo.length > 0 && (
+            <div className="px-4 pt-3 pb-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                 <p className="text-[10px] font-bold text-green-700 uppercase tracking-widest">💵 Efectivo</p>
               </div>
-              <div className="space-y-1.5">
-                {dia.lineasEfectivo.map((l, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-green-50/60 rounded-lg px-3 py-2">
-                    <span className="text-xs text-green-700 font-bold w-6 text-center shrink-0">{l.cantidad}x</span>
-                    <span className="flex-1 text-xs font-semibold text-stone-700 truncate">{l.nombre}</span>
-                    <span className="text-xs font-black text-green-800 shrink-0">{formatCLP(l.total)}</span>
+
+              {ticketsEfectivo.map((ticket, idx) => (
+                <div key={ticket.ventaId} className="bg-green-50/60 rounded-xl overflow-hidden border border-green-100">
+                  {/* Cabecera del ticket */}
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-green-100/70">
+                    <span className="text-[10px] font-black text-green-700 uppercase tracking-wider">
+                      🧾 Venta #{idx + 1}
+                    </span>
+                    <span className="text-[10px] text-green-600 font-bold">{ticket.hora}</span>
                   </div>
-                ))}
-              </div>
-              <div className="flex justify-between items-center mt-2 px-1">
+                  {/* Líneas del ticket */}
+                  <div className="px-3 py-2 space-y-1">
+                    {ticket.items.map((item, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-green-700 font-bold w-5 text-center shrink-0">{item.cantidad}x</span>
+                        <span className="flex-1 text-xs font-semibold text-stone-700 truncate">{item.nombre_producto}</span>
+                        <span className="text-xs font-black text-green-800 shrink-0">{formatCLP(item.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Total del ticket */}
+                  {ticket.items.length > 1 && (
+                    <div className="flex justify-between items-center px-3 py-1.5 bg-green-100/50 border-t border-green-100">
+                      <span className="text-[10px] text-green-700 font-bold uppercase tracking-wider">Total</span>
+                      <span className="text-sm font-black text-green-800">{formatCLP(ticket.total)}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div className="flex justify-between items-center mt-1 px-1">
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Subtotal efectivo</span>
                 <span className="text-sm font-black text-green-700">{formatCLP(dia.efectivo)}</span>
               </div>
@@ -79,34 +146,55 @@ export default function TarjetaDia({ dia, onGestionar }: TarjetaDiaProps) {
           )}
 
           {/* SEPARADOR */}
-          {dia.lineasEfectivo.length > 0 && dia.lineasTransferencia.length > 0 && (
-            <div className="mx-4 border-t border-stone-100 my-1"></div>
+          {ticketsEfectivo.length > 0 && ticketsTransferencia.length > 0 && (
+            <div className="mx-4 border-t border-stone-100 my-1" />
           )}
 
           {/* ── TRANSFERENCIA ── */}
-          {dia.lineasTransferencia.length > 0 && (
-            <div className="px-4 pt-2 pb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+          {ticketsTransferencia.length > 0 && (
+            <div className="px-4 pt-2 pb-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                 <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencia</p>
               </div>
-              <div className="space-y-1.5">
-                {dia.lineasTransferencia.map((l, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-blue-50/60 rounded-lg px-3 py-2">
-                    <span className="text-xs text-blue-700 font-bold w-6 text-center shrink-0">{l.cantidad}x</span>
-                    <span className="flex-1 text-xs font-semibold text-stone-700 truncate">{l.nombre}</span>
-                    <span className="text-xs font-black text-blue-800 shrink-0">{formatCLP(l.total)}</span>
+
+              {ticketsTransferencia.map((ticket, idx) => (
+                <div key={ticket.ventaId} className="bg-blue-50/60 rounded-xl overflow-hidden border border-blue-100">
+                  {/* Cabecera del ticket */}
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-blue-100/70">
+                    <span className="text-[10px] font-black text-blue-700 uppercase tracking-wider">
+                      🧾 Venta #{idx + 1}
+                    </span>
+                    <span className="text-[10px] text-blue-600 font-bold">{ticket.hora}</span>
                   </div>
-                ))}
-              </div>
-              <div className="flex justify-between items-center mt-2 px-1">
+                  {/* Líneas del ticket */}
+                  <div className="px-3 py-2 space-y-1">
+                    {ticket.items.map((item, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-blue-700 font-bold w-5 text-center shrink-0">{item.cantidad}x</span>
+                        <span className="flex-1 text-xs font-semibold text-stone-700 truncate">{item.nombre_producto}</span>
+                        <span className="text-xs font-black text-blue-800 shrink-0">{formatCLP(item.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Total del ticket */}
+                  {ticket.items.length > 1 && (
+                    <div className="flex justify-between items-center px-3 py-1.5 bg-blue-100/50 border-t border-blue-100">
+                      <span className="text-[10px] text-blue-700 font-bold uppercase tracking-wider">Total</span>
+                      <span className="text-sm font-black text-blue-800">{formatCLP(ticket.total)}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div className="flex justify-between items-center mt-1 px-1">
                 <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Subtotal transf.</span>
                 <span className="text-sm font-black text-blue-700">{formatCLP(dia.transferencia)}</span>
               </div>
 
               {/* Mini desglose por banco */}
               {Object.keys(dia.desgloseBancos).length > 0 && (
-                <div className="mt-3 space-y-1.5 border-t border-blue-100 pt-3">
+                <div className="space-y-1.5 border-t border-blue-100 pt-3">
                   <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Desglose por cuenta</p>
                   {Object.entries(dia.desgloseBancos).map(([key, info]) => (
                     <div key={key} className="flex items-center justify-between bg-blue-100/60 border border-blue-200 rounded-lg px-3 py-2">
