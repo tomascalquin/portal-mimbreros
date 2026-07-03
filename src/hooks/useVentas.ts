@@ -94,7 +94,7 @@ export function useVentas(miId: string) {
     const { inicio, fin } = getRango(p, offset);
     const { data, error } = await supabase
       .from('ventas')
-      .select('id, created_at, nombre_producto, cantidad, precio_unitario, total, metodo_pago, banco_id, producto_id')
+      .select('id, venta_id, created_at, nombre_producto, cantidad, precio_unitario, total, metodo_pago, banco_id, producto_id')
       .eq('tienda_id', miId)
       .gte('created_at', inicio)
       .lte('created_at', fin)
@@ -138,9 +138,12 @@ export function useVentas(miId: string) {
 
     const dateObj = new Date(`${fechaVenta}T12:00:00`);
     const isoDate = dateObj.toISOString();
+    // Un único UUID agrupa todas las líneas de esta compra como una sola transacción
+    const ventaId = crypto.randomUUID();
 
     const registros = lineas.map(linea => ({
       tienda_id: miId,
+      venta_id: ventaId,
       producto_id: linea.origen === 'vitrina' && linea.producto_id != null ? linea.producto_id : null,
       nombre_producto: linea.nombre,
       cantidad: linea.cantidad,
@@ -177,6 +180,7 @@ export function useVentas(miId: string) {
 
     const nuevasVentas = lineas.map(linea => ({
       id: crypto.randomUUID(),
+      venta_id: ventaId,
       created_at: isoDate,
       nombre_producto: linea.nombre,
       cantidad: linea.cantidad,
@@ -205,10 +209,18 @@ export function useVentas(miId: string) {
 
   const agrupadoPorDia = (): ResumenDia[] => {
     const map: Record<string, ResumenDia> = {};
+    // Rastreamos venta_ids únicos por día para contar transacciones reales
+    const ventasUnicasPorDia: Record<string, Set<string>> = {};
     ventas.forEach(v => {
       const fecha = fechaEnSantiago(v.created_at);
-      if (!map[fecha]) map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [], desgloseBancos: {}, ventasOriginales: [] };
-      map[fecha].ventas++;
+      if (!map[fecha]) {
+        map[fecha] = { fecha, efectivo: 0, transferencia: 0, total: 0, ventas: 0, lineasEfectivo: [], lineasTransferencia: [], desgloseBancos: {}, ventasOriginales: [] };
+        ventasUnicasPorDia[fecha] = new Set();
+      }
+      // Contar la transacción solo una vez por venta_id (o por id si no hay venta_id)
+      const keyVenta = v.venta_id || v.id;
+      ventasUnicasPorDia[fecha].add(keyVenta);
+      map[fecha].ventas = ventasUnicasPorDia[fecha].size;
       map[fecha].total += v.total;
       map[fecha].ventasOriginales.push(v);
       if (v.metodo_pago === 'Efectivo') {
@@ -266,7 +278,9 @@ export function useVentas(miId: string) {
     const totalPeriodo = ventas.reduce((s, v) => s + v.total, 0);
     const totalEfectivo = ventas.filter(v => v.metodo_pago === 'Efectivo').reduce((s, v) => s + v.total, 0);
     const totalTransferencia = ventas.filter(v => v.metodo_pago === 'Transferencia').reduce((s, v) => s + v.total, 0);
-    const numTransacciones = ventas.length;
+    // Contar transacciones únicas (un cliente puede comprar varios productos en una sola venta)
+    const ventasUnicas = new Set(ventas.map(v => v.venta_id || v.id));
+    const numTransacciones = ventasUnicas.size;
     const ticketPromedio = numTransacciones > 0 ? totalPeriodo / numTransacciones : 0;
 
     // Días únicos con ventas

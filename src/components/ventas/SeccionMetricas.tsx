@@ -27,7 +27,7 @@ export default function SeccionMetricas({ m }: { m: Metricas }) {
           <p className="font-black text-stone-800 text-lg leading-tight">{formatCLP(Math.round(m.ticketPromedio))}</p>
         </div>
         <div className="bg-white border border-stone-200 rounded-2xl p-3.5 text-center">
-          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">📋 Transacciones</p>
+          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">🛒 Ventas</p>
           <p className="font-black text-stone-800 text-lg leading-tight">{m.numTransacciones}</p>
           <p className="text-[10px] text-stone-400">{m.ventasPorDia.toFixed(1)}/día</p>
         </div>

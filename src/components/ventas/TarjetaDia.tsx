@@ -27,7 +27,7 @@ export default function TarjetaDia({ dia, onGestionar }: TarjetaDiaProps) {
               ⚙️ Gestionar
             </span>
           </div>
-          <p className="text-stone-400 text-xs mt-0.5">{dia.ventas} transacc. · toca para ver detalle</p>
+          <p className="text-stone-400 text-xs mt-0.5">{dia.ventas} venta{dia.ventas !== 1 ? 's' : ''} · toca para ver detalle</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="font-black text-stone-800 text-lg">{formatCLP(dia.total)}</span>
