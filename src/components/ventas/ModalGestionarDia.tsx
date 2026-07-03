@@ -26,9 +26,12 @@ export default function ModalGestionarDia({ dia, onClose, onRefresh, bancos }: M
     setEditPrecio(v.precio_unitario);
     setEditMetodo(v.metodo_pago);
     setEditBancoId(v.banco_id || '');
-    const local = new Date(v.created_at);
-    local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
-    setEditFechaHora(local.toISOString().slice(0, 16));
+    // Forzamos a que el string datetime-local siempre esté en hora de Chile, ignorando el dispositivo
+    const formatter = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+    });
+    const santiagoString = formatter.format(new Date(v.created_at)).replace(' ', 'T');
+    setEditFechaHora(santiagoString);
   };
 
   const guardar = async (v: any) => {
@@ -39,7 +42,8 @@ export default function ModalGestionarDia({ dia, onClose, onRefresh, bancos }: M
       total: editCantidad * editPrecio,
       metodo_pago: editMetodo,
       banco_id: editMetodo === 'Transferencia' && editBancoId ? editBancoId : null,
-      created_at: new Date(editFechaHora).toISOString()
+      // Para guardar, interpretamos el datetime ingresado asumiendo que es hora de Chile
+      created_at: new Date(editFechaHora + '-04:00').toISOString()
     }).eq('id', v.id);
     setGuardando(false);
     if (error) { alert('Error: ' + error.message); return; }

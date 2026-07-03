@@ -136,8 +136,16 @@ export function useVentas(miId: string) {
     if (lineas.length === 0) return alert('Agrega al menos un producto.');
     setGuardando(true);
 
-    const dateObj = new Date(`${fechaVenta}T12:00:00`);
-    const isoDate = dateObj.toISOString();
+    const hoyStr = fechaEnSantiago(new Date());
+    let isoDate: string;
+    if (fechaVenta === hoyStr) {
+      // Si la venta es de hoy, usamos la hora exacta actual
+      isoDate = new Date().toISOString();
+    } else {
+      // Si es de otro día (retroactiva), la dejamos al mediodía local de Chile
+      isoDate = new Date(`${fechaVenta}T12:00:00`).toISOString();
+    }
+    
     // Un único UUID agrupa todas las líneas de esta compra como una sola transacción
     const ventaId = crypto.randomUUID();
 
