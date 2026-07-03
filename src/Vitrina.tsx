@@ -335,27 +335,15 @@ export default function Vitrina() {
                           ? <img src={getOptimizedUrl(p.foto_url, 400)} alt={p.nombre} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
                           : <div className="w-full h-full flex items-center justify-center text-4xl text-stone-300">📦</div>
                         }
-                        {/* Badge sin stock */}
-                        {p.stock === 0 && (
-                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                            <span className="bg-white/90 text-stone-700 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow">Sin stock</span>
-                          </div>
-                        )}
                       </div>
                       {/* Contenido */}
                       <div className="p-3 flex-1 flex flex-col gap-2">
-                        <h3 className="text-xs sm:text-sm font-bold text-stone-800 leading-tight line-clamp-2">
+                        <h3 className="text-xs sm:text-sm font-bold text-stone-800 leading-tight line-clamp-2 min-h-[36px] sm:min-h-[40px]">
                           {p.nombre}
                         </h3>
-                        {p.precio > 0 && (
-                          <p className="text-sm font-black text-amber-700">
-                            ${p.precio.toLocaleString('es-CL')}
-                          </p>
-                        )}
                         <button
                           onClick={(e) => agregarACotizacion(p, e)}
-                          disabled={p.stock === 0}
-                          className="mt-auto w-full bg-amber-100 text-amber-900 py-2.5 rounded-xl font-bold text-[10px] sm:text-xs hover:bg-amber-700 hover:text-white active:scale-95 transition-all flex justify-center items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="mt-auto w-full bg-amber-100 text-amber-900 py-2.5 rounded-xl font-bold text-[10px] sm:text-xs hover:bg-amber-700 hover:text-white active:scale-95 transition-all flex justify-center items-center gap-1.5"
                         >
                           <span className="text-sm">➕</span> Añadir
                         </button>
