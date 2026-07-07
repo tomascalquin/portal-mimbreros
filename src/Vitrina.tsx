@@ -277,15 +277,17 @@ export default function Vitrina() {
             <button
               onClick={() => setFiltroActivo('Todos')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filtroActivo === 'Todos' ? 'bg-amber-700 text-white shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:border-amber-400'}`}
+              style={{ animation: 'chipEntrance 0.35s cubic-bezier(0.34,1.56,0.64,1) both', animationDelay: '0ms' }}
             >
               Todo ({productosFiltradosPorBusqueda.length})
             </button>
-            {categorias.map(cat => {
+            {categorias.map((cat, ci) => {
               const count = productosFiltradosPorBusqueda.filter(p => p.categoria_id === cat.id).length;
               if (count === 0) return null;
               return (
                 <button key={cat.id} onClick={() => setFiltroActivo(cat.id)}
                   className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filtroActivo === cat.id ? 'bg-amber-700 text-white shadow-sm' : 'bg-white text-stone-600 border border-stone-200 hover:border-amber-400'}`}
+                  style={{ animation: 'chipEntrance 0.35s cubic-bezier(0.34,1.56,0.64,1) both', animationDelay: `${(ci + 1) * 55}ms` }}
                 >
                   {cat.nombre} ({count})
                 </button>
@@ -327,7 +329,7 @@ export default function Vitrina() {
                       key={p.id}
                       onClick={() => abrirDetalle(p)}
                       className="group bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm flex flex-col h-full cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:border-amber-200 active:scale-[0.97]"
-                      style={{ animation: 'cardEntrance 0.4s ease-out both', animationDelay: `${idx * 60}ms` }}
+                      style={{ animation: 'cardEntrance 0.5s cubic-bezier(0.34,1.56,0.64,1) both', animationDelay: `${idx * 80}ms` }}
                     >
                       {/* Imagen */}
                       <div className="aspect-square bg-stone-100 shrink-0 overflow-hidden relative">

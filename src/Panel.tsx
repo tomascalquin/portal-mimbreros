@@ -4,12 +4,14 @@ import PestanaCatalogo from './PestanaCatalogo';
 import PestanaCompras from './PestanaCompras';
 import PestanaLocal from './PestanaLocal';
 import PestanaVentas from './PestanaVentas';
+import PestanaFletes from './PestanaFletes';
 
 const TABS = [
   { id: 'catalogo', icon: '📦', label: 'Catálogo' },
   { id: 'compras',  icon: '📝', label: 'Compras'  },
   { id: 'ventas',   icon: '💰', label: 'Ventas'   },
   { id: 'local',    icon: '🏪', label: 'Mi Local' },
+  { id: 'fletes',   icon: '🚛', label: 'Fletes'   },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -71,6 +73,7 @@ export default function Panel() {
         {pestana === 'compras'  && <PestanaCompras  miId={miId} />}
         {pestana === 'ventas'   && <PestanaVentas   miId={miId} />}
         {pestana === 'local'    && <PestanaLocal    miId={miId} nombreLocal={nombreLocal} setNombreLocal={setNombreLocal} />}
+        {pestana === 'fletes'   && <PestanaFletes   miId={miId} nombreLocal={nombreLocal} />}
       </main>
 
       {/* ── NAVBAR INFERIOR MEJORADO ── */}

@@ -80,6 +80,11 @@
 }
 
 @keyframes cardEntrance {
-  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  from { opacity: 0; transform: translateY(28px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+@keyframes chipEntrance {
+  from { opacity: 0; transform: translateY(10px) scale(0.92); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
