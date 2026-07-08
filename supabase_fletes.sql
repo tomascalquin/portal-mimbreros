@@ -40,6 +40,9 @@ DROP POLICY IF EXISTS "peajes_lectura_publica" ON peajes_chile;
 CREATE POLICY "peajes_lectura_publica" ON peajes_chile
   FOR SELECT USING (true);
 
+-- Asegurar columna orden (por si la tabla ya existía sin ella)
+ALTER TABLE peajes_chile ADD COLUMN IF NOT EXISTS orden integer DEFAULT 0;
+
 -- 3. Cotizaciones guardadas
 CREATE TABLE IF NOT EXISTS cotizaciones_flete (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,

@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 
 // ── Íconos premium ──
 const iconOrigen = L.divIcon({
@@ -263,8 +262,8 @@ export default function MapaPicker({ onConfirmar, onCerrar }: Props) {
         </div>
 
         {/* Map */}
-        <div className="flex-1" style={{ minHeight: '260px' }}>
-          <MapContainer center={[-35.5, -71.0]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl>
+        <div style={{ height: '320px', width: '100%', flexShrink: 0 }}>
+          <MapContainer center={[-35.5, -71.0]} zoom={5} style={{ height: '320px', width: '100%' }} zoomControl>
             <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <MapClickHandler step={step} onO={handleMapOrigen} onD={handleMapDestino} />
             <BoundsFitter o={origen} d={destino} />
