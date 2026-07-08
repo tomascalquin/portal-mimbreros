@@ -256,6 +256,45 @@ export function compararVehiculos(
   })).sort((a, b) => a.desglose.precioFinal - b.desglose.precioFinal);
 }
 
+// ── Generar texto resumen de cotización (reutilizable para WhatsApp y clipboard) ──
+export function generarTextoResumen(
+  desglose: DesgloseCosto,
+  params: {
+    vehiculo: string;
+    origen: string;
+    destino: string;
+    distanciaKm: number;
+    idaYVuelta: boolean;
+    clienteNombre: string;
+    peajesSeleccionados: PeajeSeleccionado[];
+    margenPct: number;
+  }
+): string {
+  const peajesActivos = params.peajesSeleccionados.filter(p => p.seleccionado);
+  let msg = `🚛 *COTIZACIÓN DE FLETE*\n`;
+  if (params.clienteNombre) msg += `👤 Cliente: ${params.clienteNombre}\n`;
+  msg += `\n📍 *Ruta:* ${params.origen} → ${params.destino}\n`;
+  msg += `📏 Distancia: ${params.distanciaKm} km${params.idaYVuelta ? ' (ida y vuelta)' : ' (solo ida)'}\n`;
+  msg += `🛻 Vehículo: ${params.vehiculo}\n`;
+  msg += `⏱️ Tiempo estimado: ~${formatTiempo(desglose.tiempoEstimadoMin)}\n`;
+  msg += `\n━━━━━━━━━━━━━━━\n`;
+  msg += `🔧 *COSTOS VEHÍCULO*\n`;
+  msg += `  ⛽ Combustible: ${formatCLP(desglose.combustible)}\n`;
+  msg += `  🔩 Desgaste: ${formatCLP(desglose.desgaste)}\n`;
+  msg += `\n👤 *COSTOS OPERADOR*\n`;
+  msg += `  🕐 Conductor: ${formatCLP(desglose.conductor)}\n`;
+  msg += `  🍽️ Almuerzo: ${formatCLP(desglose.almuerzo)}\n`;
+  if (peajesActivos.length > 0) {
+    msg += `  🛣️ Peajes: ${formatCLP(desglose.peajes)}\n`;
+    peajesActivos.forEach(p => { msg += `    • ${p.peaje.nombre}: ${formatCLP(p.tarifa)}\n`; });
+  }
+  msg += `\n━━━━━━━━━━━━━━━\n`;
+  msg += `💰 Costo total: ${formatCLP(desglose.costoTotal)}\n`;
+  if (params.margenPct > 0) msg += `📊 Margen: ${params.margenPct}%\n`;
+  msg += `\n✅ *PRECIO FINAL: ${formatCLP(desglose.precioFinal)}*\n`;
+  return msg;
+}
+
 // ── Hook principal ──
 export function useFletes(miId: string) {
   const [vehiculos, setVehiculos] = useState<VehiculoFlete[]>([]);
@@ -414,29 +453,7 @@ export function useFletes(miId: string) {
     peajesSeleccionados: PeajeSeleccionado[];
     margenPct: number;
   }) => {
-    const peajesActivos = params.peajesSeleccionados.filter(p => p.seleccionado);
-    let msg = `🚛 *COTIZACIÓN DE FLETE*\n`;
-    if (params.clienteNombre) msg += `👤 Cliente: ${params.clienteNombre}\n`;
-    msg += `\n📍 *Ruta:* ${params.origen} → ${params.destino}\n`;
-    msg += `📏 Distancia: ${params.distanciaKm} km${params.idaYVuelta ? ' (ida y vuelta)' : ' (solo ida)'}\n`;
-    msg += `🛻 Vehículo: ${params.vehiculo}\n`;
-    msg += `⏱️ Tiempo estimado: ~${formatTiempo(desglose.tiempoEstimadoMin)}\n`;
-    msg += `\n━━━━━━━━━━━━━━━\n`;
-    msg += `🔧 *COSTOS VEHÍCULO*\n`;
-    msg += `  ⛽ Combustible: ${formatCLP(desglose.combustible)}\n`;
-    msg += `  🔩 Desgaste: ${formatCLP(desglose.desgaste)}\n`;
-    msg += `\n👤 *COSTOS OPERADOR*\n`;
-    msg += `  🕐 Conductor: ${formatCLP(desglose.conductor)}\n`;
-    msg += `  🍽️ Almuerzo: ${formatCLP(desglose.almuerzo)}\n`;
-    if (peajesActivos.length > 0) {
-      msg += `  🛣️ Peajes: ${formatCLP(desglose.peajes)}\n`;
-      peajesActivos.forEach(p => { msg += `    • ${p.peaje.nombre}: ${formatCLP(p.tarifa)}\n`; });
-    }
-    msg += `\n━━━━━━━━━━━━━━━\n`;
-    msg += `💰 Costo total: ${formatCLP(desglose.costoTotal)}\n`;
-    if (params.margenPct > 0) msg += `📊 Margen: ${params.margenPct}%\n`;
-    msg += `\n✅ *PRECIO FINAL: ${formatCLP(desglose.precioFinal)}*\n`;
-
+    const msg = generarTextoResumen(desglose, params);
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 

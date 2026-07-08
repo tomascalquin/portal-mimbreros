@@ -10,6 +10,16 @@ import ModalVehiculo from './components/fletes/ModalVehiculo';
 import HistorialFletes from './components/fletes/HistorialFletes';
 import DesgloseCotizacion from './components/fletes/DesgloseCotizacion';
 import PdfCotizacion from './components/fletes/PdfCotizacion';
+import MapaPicker from './components/fletes/MapaPicker';
+
+// Keyframe para toast slide-in
+const toastStyle = `
+@keyframes slideDown {
+  from { opacity: 0; transform: translate(-50%, -20px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.toast-slide { animation: slideDown 0.3s ease-out forwards; }
+`;
 
 export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nombreLocal?: string }) {
   const {
@@ -22,6 +32,8 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
   const [vista, setVista] = useState<'cotizar' | 'historial'>('cotizar');
   const [modalVehiculo, setModalVehiculo] = useState<VehiculoFlete | null | 'nuevo'>(null);
   const [mostrarPdf, setMostrarPdf] = useState(false);
+  const [mostrarMapa, setMostrarMapa] = useState(false);
+  const [origenLibre, setOrigenLibre] = useState(false); // true cuando viene del mapa
 
   // Cargar preferencias guardadas
   const prefs = cargarPrefs();
@@ -129,6 +141,20 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
     guardarPrefs({ ultimoOrigen: origen, ultimoDestino: destino });
   };
 
+  // Confirmar ruta desde el mapa
+  const handleConfirmarMapa = (origenNombre: string, destinoNombre: string, km: number, duracionMin: number) => {
+    setOrigen(origenNombre);
+    setDestino(destinoNombre);
+    setDistanciaKm(km.toString());
+    setDistManual(true);
+    setOrigenLibre(true);
+    setMostrarMapa(false);
+    // Auto-llenar horas conductor con el tiempo real de ruta (en horas, redondeado a 0.5)
+    const horas = Math.ceil((duracionMin / 60) * 2) / 2;
+    setHorasConductor(horas.toString());
+    setHorasManual(false); // marcamos como "auto" (viene de dato real)
+  };
+
   const handleRecotizar = (c: CotizacionFlete) => {
     setOrigen(c.origen);
     setDestino(c.destino);
@@ -186,11 +212,24 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
           onCerrar={() => setMostrarPdf(false)}
         />
       )}
+      {mostrarMapa && (
+        <MapaPicker
+          onConfirmar={handleConfirmarMapa}
+          onCerrar={() => setMostrarMapa(false)}
+        />
+      )}
 
-      {/* Toast éxito */}
+      {/* Keyframes inyectados */}
+      <style>{toastStyle}</style>
+
+      {/* Toast éxito mejorado */}
       {exito && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm flex items-center gap-2 fade-in">
-          ✅ ¡Cotización guardada!
+        <div className="toast-slide fixed top-6 left-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3" style={{ transform: 'translateX(-50%)' }}>
+          <span className="text-xl">✅</span>
+          <div>
+            <p className="font-black text-sm">¡Cotización guardada!</p>
+            <p className="text-green-200 text-[11px] font-normal">Disponible en el historial</p>
+          </div>
         </div>
       )}
 
@@ -240,31 +279,65 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
                 </button>
               </div>
             ) : (
-              <div className="flex gap-2 px-4 pb-4 overflow-x-auto">
-                {vehiculos.map(v => {
-                  const tpl = VEHICLE_TEMPLATES[v.tipo as TipoVehiculo];
-                  const activo = v.id === vehiculoId;
-                  return (
-                    <div key={v.id} className="shrink-0 flex flex-col items-center gap-1 w-24">
-                      <button
-                        onClick={() => setVehiculoId(v.id)}
-                        className={`w-full flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all ${activo ? 'bg-amber-700 border-amber-700 text-white' : 'bg-stone-50 border-stone-200 text-stone-600'}`}
-                      >
-                        <span className="text-2xl">{tpl?.emoji ?? '🛻'}</span>
-                        <span className="text-[10px] font-bold leading-tight text-center">{v.nombre}</span>
-                        <span className={`text-[9px] ${activo ? 'text-amber-200' : 'text-stone-400'}`}>{v.rendimiento_km_lt} km/lt</span>
-                      </button>
-                      <button onClick={() => setModalVehiculo(v)} className="text-[9px] text-stone-400 hover:text-amber-700 font-bold">✏️ Editar</button>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <div className="flex gap-2 px-4 overflow-x-auto">
+                  {vehiculos.map(v => {
+                    const tpl = VEHICLE_TEMPLATES[v.tipo as TipoVehiculo];
+                    const activo = v.id === vehiculoId;
+                    return (
+                      <div key={v.id} className="shrink-0 flex flex-col items-center gap-1 w-24">
+                        <button
+                          onClick={() => setVehiculoId(v.id)}
+                          className={`w-full flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all ${activo ? 'bg-amber-700 border-amber-700 text-white' : 'bg-stone-50 border-stone-200 text-stone-600'}`}
+                        >
+                          <span className="text-2xl">{tpl?.emoji ?? '🛻'}</span>
+                          <span className="text-[10px] font-bold leading-tight text-center">{v.nombre}</span>
+                          <span className={`text-[9px] ${activo ? 'text-amber-200' : 'text-stone-400'}`}>{v.rendimiento_km_lt} km/lt</span>
+                        </button>
+                        <button onClick={() => setModalVehiculo(v)} className="text-[9px] text-stone-400 hover:text-amber-700 font-bold">✏️ Editar</button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Badge parámetros vehículo activo */}
+                {vehiculo && (
+                  <div className="mx-4 mb-3 mt-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap">
+                    <span className="text-[10px] font-bold text-amber-700">🚀 {vehiculo.velocidad_promedio} km/h</span>
+                    <span className="text-stone-300">·</span>
+                    <span className="text-[10px] font-bold text-amber-700">⛽ {vehiculo.rendimiento_km_lt} km/lt</span>
+                    <span className="text-stone-300">·</span>
+                    <span className="text-[10px] font-bold text-amber-700">💰 {formatCLP(vehiculo.costo_desgaste_km)}/km</span>
+                    <span className="text-stone-300">·</span>
+                    <span className="text-[10px] font-bold text-amber-700">⛽ {formatCLP(vehiculo.precio_litro)}/lt</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           {/* Ruta */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-4 space-y-3">
-            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">📍 Ruta</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">📍 Ruta</p>
+              <button
+                onClick={() => setMostrarMapa(true)}
+                className="flex items-center gap-1.5 bg-green-700 hover:bg-green-800 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95"
+              >
+                <span>🗺️</span> Usar mapa
+              </button>
+            </div>
+
+            {origenLibre && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="text-green-600 text-xs">🗺️</span>
+                <p className="text-green-700 text-[11px] font-bold">Ruta obtenida del mapa — distancia real por carretera</p>
+                <button
+                  onClick={() => { setOrigenLibre(false); setDistManual(false); }}
+                  className="ml-auto text-green-600 hover:text-green-800 text-[10px] font-bold underline shrink-0"
+                >Cambiar a lista</button>
+              </div>
+            )}
+
             <div>
               <label className="block text-[10px] font-bold text-stone-400 mb-1">Cliente (opcional)</label>
               <input type="text" value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} placeholder="Nombre del cliente..." className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm" />
@@ -274,9 +347,18 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <label className="block text-[10px] font-bold text-stone-400 mb-1">Origen</label>
-                <select value={origen} onChange={e => { setOrigen(e.target.value); setDistManual(false); }} className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm">
-                  {CIUDADES_CHILE.map(c => <option key={c}>{c}</option>)}
-                </select>
+                {origenLibre ? (
+                  <input
+                    type="text"
+                    value={origen}
+                    onChange={e => setOrigen(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm"
+                  />
+                ) : (
+                  <select value={origen} onChange={e => { setOrigen(e.target.value); setDistManual(false); }} className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm">
+                    {CIUDADES_CHILE.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                )}
               </div>
               <button
                 onClick={swapRuta}
@@ -285,9 +367,18 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
               >⇄</button>
               <div className="flex-1">
                 <label className="block text-[10px] font-bold text-stone-400 mb-1">Destino</label>
-                <select value={destino} onChange={e => { setDestino(e.target.value); setDistManual(false); }} className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm">
-                  {CIUDADES_CHILE.map(c => <option key={c}>{c}</option>)}
-                </select>
+                {origenLibre ? (
+                  <input
+                    type="text"
+                    value={destino}
+                    onChange={e => setDestino(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm"
+                  />
+                ) : (
+                  <select value={destino} onChange={e => { setDestino(e.target.value); setDistManual(false); }} className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-sm">
+                    {CIUDADES_CHILE.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                )}
               </div>
             </div>
 
@@ -295,9 +386,18 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-[10px] font-bold text-stone-400">Distancia (km)</label>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${distManual ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                  {distManual ? '✏️ Manual' : '🤖 Auto'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {distManual && (
+                    <button
+                      onClick={() => { setDistManual(false); }}
+                      className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 transition-all"
+                      title="Volver al cálculo automático"
+                    >↩ Auto</button>
+                  )}
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${distManual ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                    {distManual ? '✏️ Manual' : '🤖 Auto'}
+                  </span>
+                </div>
               </div>
               <input
                 type="number"
@@ -361,9 +461,18 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[10px] font-bold text-stone-400">Horas conductor</label>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${horasManual ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                    {horasManual ? '✏️' : '🤖'}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {horasManual && (
+                      <button
+                        onClick={() => setHorasManual(false)}
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 transition-all"
+                        title="Volver al cálculo automático"
+                      >↩</button>
+                    )}
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${horasManual ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                      {horasManual ? '✏️' : '🤖'}
+                    </span>
+                  </div>
                 </div>
                 <input
                   type="number"
@@ -440,6 +549,10 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
               valorHora={valorHora}
               valorAlmuerzo={valorAlmuerzo}
               guardando={guardando}
+              vehiculoNombre={vehiculo?.nombre ?? ''}
+              origen={origen}
+              destino={destino}
+              clienteNombre={clienteNombre}
               onGuardar={handleGuardar}
               onWhatsapp={() => vehiculo && desglose && compartirWhatsapp(desglose, {
                 vehiculo: vehiculo.nombre, origen, destino,
