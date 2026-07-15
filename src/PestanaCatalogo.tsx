@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase, getOptimizedUrl } from './supabase';
+import { useToast } from './hooks/useToast';
 import imageCompression from 'browser-image-compression';
 // @ts-ignore
 import { QRCodeCanvas } from 'qrcode.react';
 
 export default function PestanaCatalogo({ miId, nombreLocal }: any) {
+  const { toast, confirmar } = useToast();
   const [misProductos, setMisProductos] = useState<any[]>([]);
   // --- ESTADO PARA LAS CATEGORÍAS RELACIONALES ---
   const [categorias, setCategorias] = useState<any[]>([]);
@@ -115,12 +117,32 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
 
   const eliminarProducto = async (id: string, nombre: string, e: any) => {
     e.stopPropagation(); 
-    const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar "${nombre}" de tu vitrina pública?`);
-    if (!confirmar) return;
+    const ok = await confirmar({
+      titulo: `¿Eliminar "${nombre}"?`,
+      descripcion: 'Se quitará de tu vitrina pública permanentemente.',
+      textoConfirmar: 'Eliminar',
+      peligroso: true,
+    });
+    if (!ok) return;
 
     const { error } = await supabase.from('productos').delete().eq('id', id);
-    if (error) alert("Hubo un error al eliminar: " + error.message);
-    else await cargarProductos();
+    if (error) toast('Error al eliminar: ' + error.message, 'error');
+    else {
+      toast('🗑️ Producto eliminado', 'info');
+      await cargarProductos();
+    }
+  };
+
+  const toggleVisibilidad = async (id: string, visibleActual: boolean, e: any) => {
+    e.stopPropagation();
+    const nuevoVisible = !visibleActual;
+    const { error } = await supabase.from('productos').update({ visible: nuevoVisible }).eq('id', id);
+    if (error) {
+      toast('Error al cambiar visibilidad', 'error');
+    } else {
+      toast(nuevoVisible ? '👁️ Producto visible en vitrina' : '🙈 Producto oculto de la vitrina', 'info');
+      await cargarProductos();
+    }
   };
 
   const abrirDetalle = (p: any) => {
@@ -206,7 +228,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
               const categoriaObj = categorias.find(c => c.id === p.categoria_id);
               
               return (
-                <div key={p.id} className="bg-white p-3 rounded-xl shadow-sm border border-stone-200 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div key={p.id} className={`bg-white p-3 rounded-xl shadow-sm border border-stone-200 flex flex-col sm:flex-row items-start sm:items-center gap-4 transition-opacity ${p.visible === false ? 'opacity-50' : ''}`}>
                   <div 
                     onClick={() => abrirDetalle(p)}
                     className="flex items-center gap-4 w-full sm:w-auto flex-1 cursor-pointer group hover:bg-stone-50 p-1 -m-1 rounded-lg transition-colors"
@@ -217,7 +239,12 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-bold text-stone-800 leading-tight group-hover:text-amber-700 transition-colors">{p.nombre}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-stone-800 leading-tight group-hover:text-amber-700 transition-colors">{p.nombre}</h3>
+                        {p.visible === false && (
+                          <span className="inline-block bg-stone-200 text-stone-500 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">🙈 Oculto</span>
+                        )}
+                      </div>
                       {categoriaObj && (
                         <span className="inline-block bg-stone-100 text-stone-500 text-[10px] px-2 py-0.5 rounded mt-1 font-semibold uppercase tracking-wider">
                           {categoriaObj.nombre}
@@ -228,6 +255,18 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                   </div>
 
                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 mt-1 sm:mt-0 border-stone-100">
+                    {/* Toggle visibilidad */}
+                    <button
+                      onClick={(e) => toggleVisibilidad(p.id, p.visible !== false, e)}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                        p.visible !== false ? 'bg-green-500' : 'bg-stone-300'
+                      }`}
+                      title={p.visible !== false ? 'Visible — toca para ocultar' : 'Oculto — toca para mostrar'}
+                    >
+                      <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                        p.visible !== false ? 'translate-x-5' : 'translate-x-0.5'
+                      }`} />
+                    </button>
                     <button
                       onClick={(e) => abrirParaEditar(p, e)}
                       className="flex-1 sm:flex-none px-4 py-2.5 bg-stone-100 rounded-xl text-stone-700 font-bold text-sm hover:bg-stone-200 active:scale-95 transition-all"
@@ -372,7 +411,7 @@ export default function PestanaCatalogo({ miId, nombreLocal }: any) {
                   )}
                 </div>
 
-                <button onClick={() => alert("¡Así lo verá tu cliente! Al tocar aquí se abrirá WhatsApp.")} className="w-full mt-4 bg-[#25D366] text-white py-3.5 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 shrink-0 cursor-default opacity-90">
+                <button onClick={() => toast('¡Así lo verá tu cliente! Al tocar aquí se abrirá WhatsApp.', 'info', '👁️')} className="w-full mt-4 bg-[#25D366] text-white py-3.5 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 shrink-0 cursor-default opacity-90">
                   <span className="text-xl">💬</span> Consultar Precio y Stock
                 </button>
               </div>

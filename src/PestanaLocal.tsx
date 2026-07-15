@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import * as XLSX from 'xlsx';
+import { useToast } from './hooks/useToast';
 
 // ── Mini componente de confirmación inline (reemplaza window.confirm feo de iOS) ──
 function ConfirmDelete({ nombre, onConfirm, onCancel }: { nombre: string; onConfirm: () => void; onCancel: () => void }) {
@@ -26,6 +27,7 @@ function ConfirmDelete({ nombre, onConfirm, onCancel }: { nombre: string; onConf
 }
 
 export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any) {
+  const { toast } = useToast();
   const [telefono, setTelefono] = useState('');
   const [guardandoLocal, setGuardandoLocal] = useState(false);
   const [mensajeLocal, setMensajeLocal] = useState({ texto: '', tipo: '' });
@@ -169,7 +171,7 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
       XLSX.utils.book_append_sheet(libroExcel, XLSX.utils.json_to_sheet(datosArtesanos), "Artesanos");
       const fechaHoy = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
       XLSX.writeFile(libroExcel, `Reporte_Local_${fechaHoy}.xlsx`);
-    } catch { alert("Error al generar el Excel."); }
+    } catch { toast('Error al generar el Excel', 'error', '❌'); }
     setExportando(false);
   };
 

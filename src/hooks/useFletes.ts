@@ -296,7 +296,7 @@ export function generarTextoResumen(
 }
 
 // ── Hook principal ──
-export function useFletes(miId: string) {
+export function useFletes(miId: string, onToast?: (texto: string, tipo: 'exito' | 'error' | 'info', icono?: string) => void) {
   const [vehiculos, setVehiculos] = useState<VehiculoFlete[]>([]);
   const [peajes, setPeajes] = useState<PeajeChile[]>([]);
   const [cotizaciones, setCotizaciones] = useState<CotizacionFlete[]>([]);
@@ -329,7 +329,7 @@ export function useFletes(miId: string) {
       .insert({ ...v, tienda_id: miId })
       .select()
       .single();
-    if (error) { alert('Error al crear vehículo: ' + error.message); return null; }
+    if (error) { onToast?.('Error al crear vehículo: ' + error.message, 'error', '❌'); return null; }
     setVehiculos(prev => [...prev, data]);
     return data;
   };
@@ -339,13 +339,13 @@ export function useFletes(miId: string) {
       .from('vehiculos_flete')
       .update(v)
       .eq('id', id);
-    if (error) { alert('Error: ' + error.message); return; }
+    if (error) { onToast?.('Error: ' + error.message, 'error', '❌'); return; }
     setVehiculos(prev => prev.map(x => x.id === id ? { ...x, ...v } : x));
   };
 
   const eliminarVehiculo = async (id: string) => {
     const { error } = await supabase.from('vehiculos_flete').delete().eq('id', id);
-    if (error) { alert('Error: ' + error.message); return; }
+    if (error) { onToast?.('Error: ' + error.message, 'error', '❌'); return; }
     setVehiculos(prev => prev.filter(x => x.id !== id));
   };
 
@@ -428,7 +428,7 @@ export function useFletes(miId: string) {
       .single();
 
     setGuardando(false);
-    if (error) { alert('Error al guardar: ' + error.message); return null; }
+    if (error) { onToast?.('Error al guardar: ' + error.message, 'error', '❌'); return null; }
     setCotizaciones(prev => [data, ...prev]);
     setExito(true);
     setTimeout(() => setExito(false), 2500);
@@ -438,7 +438,7 @@ export function useFletes(miId: string) {
   // ── Eliminar cotización ──
   const eliminarCotizacion = async (id: string) => {
     const { error } = await supabase.from('cotizaciones_flete').delete().eq('id', id);
-    if (error) { alert('Error: ' + error.message); return; }
+    if (error) { onToast?.('Error: ' + error.message, 'error', '❌'); return; }
     setCotizaciones(prev => prev.filter(x => x.id !== id));
   };
 

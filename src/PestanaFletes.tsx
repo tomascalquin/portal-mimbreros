@@ -11,23 +11,18 @@ import HistorialFletes from './components/fletes/HistorialFletes';
 import DesgloseCotizacion from './components/fletes/DesgloseCotizacion';
 import PdfCotizacion from './components/fletes/PdfCotizacion';
 import MapaPicker from './components/fletes/MapaPicker';
+import { useToast } from './hooks/useToast';
 
-// Keyframe para toast slide-in
-const toastStyle = `
-@keyframes slideDown {
-  from { opacity: 0; transform: translate(-50%, -20px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
-}
-.toast-slide { animation: slideDown 0.3s ease-out forwards; }
-`;
+
 
 export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nombreLocal?: string }) {
+  const { toast } = useToast();
   const {
-    vehiculos, cargando, guardando, exito,
+    vehiculos, cargando, guardando,
     crearVehiculo, actualizarVehiculo, eliminarVehiculo,
     buscarPeajes, guardarCotizacion, eliminarCotizacion,
     cotizaciones, compartirWhatsapp,
-  } = useFletes(miId);
+  } = useFletes(miId, toast);
 
   const [vista, setVista] = useState<'cotizar' | 'historial'>('cotizar');
   const [modalVehiculo, setModalVehiculo] = useState<VehiculoFlete | null | 'nuevo'>(null);
@@ -127,8 +122,8 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
   }) : null;
 
   const handleGuardar = async () => {
-    if (!vehiculo) return alert('Selecciona un vehículo');
-    if (!(parseFloat(distanciaKm) > 0)) return alert('Ingresa la distancia');
+    if (!vehiculo) { toast('Selecciona un vehículo', 'info', '🚛'); return; }
+    if (!(parseFloat(distanciaKm) > 0)) { toast('Ingresa la distancia', 'info', '📏'); return; }
     await guardarCotizacion({
       vehiculo, clienteNombre, origen, destino,
       distanciaKm: parseFloat(distanciaKm),
@@ -219,19 +214,7 @@ export default function PestanaFletes({ miId, nombreLocal }: { miId: string; nom
         />
       )}
 
-      {/* Keyframes inyectados */}
-      <style>{toastStyle}</style>
 
-      {/* Toast éxito mejorado */}
-      {exito && (
-        <div className="toast-slide fixed top-6 left-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3" style={{ transform: 'translateX(-50%)' }}>
-          <span className="text-xl">✅</span>
-          <div>
-            <p className="font-black text-sm">¡Cotización guardada!</p>
-            <p className="text-green-200 text-[11px] font-normal">Disponible en el historial</p>
-          </div>
-        </div>
-      )}
 
       {/* Toggle vista */}
       <div className="flex bg-stone-200 p-1.5 rounded-xl">

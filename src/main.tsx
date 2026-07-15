@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import 'leaflet/dist/leaflet.css'
 import './index.css'
 import App from './App.tsx'
+import { ToastProvider } from './hooks/useToast'
 
 // Lógica para forzar actualización en iOS cuando la app vuelve del segundo plano
 let lastActive = Date.now();
@@ -18,6 +19,8 @@ document.addEventListener("visibilitychange", () => {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </StrictMode>,
 )

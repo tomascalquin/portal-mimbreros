@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { VehiculoFlete, TipoVehiculo } from '../../types';
 import { VEHICLE_TEMPLATES } from '../../hooks/useFletes';
+import { useToast } from '../../hooks/useToast';
 
 interface Props {
   vehiculo: VehiculoFlete | null; // null = crear nuevo
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ModalVehiculo({ vehiculo, onGuardar, onActualizar, onEliminar, onCerrar }: Props) {
+  const { toast } = useToast();
   const [nombre, setNombre] = useState('');
   const [tipo, setTipo] = useState<TipoVehiculo>('camioneta');
   const [rendimiento, setRendimiento] = useState('10');
@@ -41,7 +43,7 @@ export default function ModalVehiculo({ vehiculo, onGuardar, onActualizar, onEli
   };
 
   const handleGuardar = async () => {
-    if (!nombre.trim()) return alert('Ingresa el nombre del vehículo');
+    if (!nombre.trim()) { toast('Ingresa el nombre del vehículo', 'error', '⚠️'); return; }
     setGuardando(true);
     const data = {
       nombre: nombre.trim(),

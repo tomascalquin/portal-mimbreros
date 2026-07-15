@@ -25,8 +25,7 @@ export function exportarExcel(
   label: string
 ) {
   if (ventas.length === 0) {
-    alert('No hay ventas en este período para exportar.');
-    return;
+    return 'No hay ventas en este período para exportar.';
   }
 
   const wb = XLSX.utils.book_new();

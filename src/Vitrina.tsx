@@ -17,6 +17,7 @@ export default function Vitrina() {
   const [modalCarrito, setModalCarrito] = useState(false);
   const [toastMensaje, setToastMensaje] = useState<string | null>(null);
   const toastTimeoutRef = useRef<any>(null);
+  const [cartPulse, setCartPulse] = useState(false);
 
   const [busqueda, setBusqueda] = useState('');
   const [mostrarSubir, setMostrarSubir] = useState(false);
@@ -86,7 +87,7 @@ export default function Vitrina() {
   const consultarPorWhatsApp = (producto: any, e?: any) => {
     if (e) e.stopPropagation();
     const telefono = tienda?.telefono;
-    if (!telefono) { alert('Este local aún no ha configurado su número de WhatsApp.'); return; }
+    if (!telefono) { mostrarToast('⚠️ Este local aún no tiene WhatsApp configurado'); return; }
     const telefonoLimpio = String(telefono).replace(/[^\d]/g, '');
     const mensaje = `¡Hola! Vengo de tu catalogo. Me interesa consultar por: ${producto.nombre}. ¿Me podrías confirmar el valor y si tienen stock disponible?`;
     window.location.href = `https://wa.me/569${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
@@ -105,6 +106,8 @@ export default function Vitrina() {
       if (existe) return prev.map(item => item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item);
       return [...prev, { ...producto, cantidad: 1 }];
     });
+    setCartPulse(true);
+    setTimeout(() => setCartPulse(false), 500);
     mostrarToast(`✔️ Añadido: ${producto.nombre}`);
   };
 
@@ -120,7 +123,7 @@ export default function Vitrina() {
 
   const enviarCotizacionFinal = () => {
     const telefono = tienda?.telefono;
-    if (!telefono) { alert('Este local aún no ha configurado su número de WhatsApp.'); return; }
+    if (!telefono) { mostrarToast('⚠️ Este local aún no tiene WhatsApp configurado'); return; }
     let mensaje = `¡Hola! Vengo de tu vitrina virtual. Me gustaría cotizar los siguientes productos:\n\n`;
     carrito.forEach(item => { mensaje += `• ${item.cantidad}x ${item.nombre}\n`; });
     const telefonoLimpio = String(telefono).replace(/[^\d]/g, '');
@@ -180,10 +183,30 @@ export default function Vitrina() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-[#FDFCF8] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <span className="text-4xl animate-bounce">🧺</span>
-          <p className="text-amber-800 font-bold uppercase text-xs">Cargando catálogo...</p>
+      <div className="min-h-screen bg-[#FDFCF8]">
+        {/* Skeleton header */}
+        <div className="h-36 rounded-b-[2.5rem] skeleton" />
+        <div className="max-w-5xl mx-auto px-4 mt-6 space-y-4">
+          {/* Skeleton search */}
+          <div className="h-12 skeleton" />
+          {/* Skeleton chips */}
+          <div className="flex gap-2">
+            {[80, 100, 90].map((w, i) => (
+              <div key={i} className="h-9 skeleton" style={{ width: w }} />
+            ))}
+          </div>
+          {/* Skeleton grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="rounded-2xl overflow-hidden border border-stone-100">
+                <div className="aspect-square skeleton" />
+                <div className="p-3 space-y-2">
+                  <div className="h-4 skeleton w-3/4" />
+                  <div className="h-10 skeleton" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -228,12 +251,16 @@ export default function Vitrina() {
         </div>
       )}
 
-      <header className="relative text-white mb-6 overflow-hidden rounded-b-[2.5rem] shadow-xl"
-        style={{ background: 'linear-gradient(135deg, #78350f 0%, #92400e 50%, #b45309 100%)' }}
+      <header className="relative text-white mb-6 overflow-hidden rounded-b-[2.5rem] shadow-xl vitrina-header-bg"
+        style={{ background: 'linear-gradient(135deg, #78350f 0%, #92400e 30%, #b45309 60%, #78350f 100%)' }}
       >
         {/* Patrón decorativo sutil */}
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-        <div className="relative z-10 px-6 py-8 text-center">
+        {/* Decorative floating shapes */}
+        <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/5 rounded-full" />
+        <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full" />
+        <div className="absolute top-10 right-20 w-3 h-3 bg-amber-400/20 rounded-full" />
+        <div className="relative z-10 px-6 py-10 text-center">
           <p className="text-amber-200/80 text-[10px] font-bold uppercase tracking-[0.3em] mb-2">Catálogo Oficial</p>
           <h1 className="text-3xl font-bold tracking-tight drop-shadow-sm">{tienda.nombre_local || 'Mi Vitrina'}</h1>
           <div className="flex items-center justify-center gap-2 mt-3">
@@ -450,7 +477,7 @@ export default function Vitrina() {
       {/* BOTÓN CARRITO */}
       {carrito.length > 0 && (
         <button onClick={() => setModalCarrito(true)}
-          className="fixed bottom-6 right-6 z-40 bg-[#25D366] text-white p-4 rounded-2xl shadow-2xl hover:bg-[#128C7E] transition-transform hover:scale-105 flex items-center gap-3 font-bold"
+          className={`fixed bottom-6 right-6 z-40 bg-[#25D366] text-white p-4 rounded-2xl shadow-2xl hover:bg-[#128C7E] transition-transform hover:scale-105 flex items-center gap-3 font-bold ${cartPulse ? 'pulse-glow' : ''}`}
         >
           <div className="relative">
             <span className="text-2xl">🛒</span>
@@ -509,6 +536,23 @@ export default function Vitrina() {
           </div>
         </div>
       )}
+
+      {/* ── Footer Profesional ── */}
+      <footer className="mt-16 border-t border-stone-200 bg-stone-50 rounded-t-3xl">
+        <div className="max-w-5xl mx-auto px-6 py-8 text-center">
+          <p className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-3">{tienda.nombre_local || 'Mi Vitrina'}</p>
+          <p className="text-stone-300 text-[10px] mb-4">Artesanías tejidas a mano con tradición chilena</p>
+          {tienda.telefono && (
+            <a
+              href={`https://wa.me/569${String(tienda.telefono).replace(/[^\d]/g, '')}`}
+              className="inline-flex items-center gap-2 bg-[#25D366] text-white text-xs font-bold px-5 py-2.5 rounded-full shadow-sm hover:bg-[#128C7E] transition-all active:scale-95"
+            >
+              <span>💬</span> Escríbenos por WhatsApp
+            </a>
+          )}
+          <p className="text-stone-300 text-[9px] mt-6">Hecho con ❤️ para artesanos</p>
+        </div>
+      </footer>
 
     </div>
   );

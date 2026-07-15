@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { DesgloseCosto, PeajeSeleccionado, VehiculoFlete } from '../../types';
 import { formatCLP } from '../../utils/fecha';
 import { formatTiempo, compararVehiculos, generarTextoResumen } from '../../hooks/useFletes';
+import { useToast } from '../../hooks/useToast';
 
 interface Props {
   desglose: DesgloseCosto;
@@ -76,6 +77,7 @@ export default function DesgloseCotizacion({
   onGuardar, onWhatsapp, onPdf, onSeleccionarVehiculo,
 }: Props) {
   const [copiado, setCopiado] = useState(false);
+  const { toast } = useToast();
 
   const comparacion = vehiculos.length > 1 ? compararVehiculos(vehiculos, {
     distanciaKm, idaYVuelta, peajesSeleccionados: peajesActivos,
@@ -95,7 +97,7 @@ export default function DesgloseCotizacion({
       await navigator.clipboard.writeText(texto);
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
-    } catch { alert('No se pudo copiar al portapapeles'); }
+    } catch { toast('No se pudo copiar al portapapeles', 'error', '❌'); }
   };
 
   const precioPorKm = distanciaKm > 0

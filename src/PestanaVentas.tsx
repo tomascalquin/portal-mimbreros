@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useToast } from './hooks/useToast';
 import type { MetodoPago, OrigenProducto, ProductoUnificado, LineaVenta, ResumenDia } from './types';
 import { getOptimizedUrl } from './supabase';
 import { formatCLP, formatFecha, calcularSemana, hoyEnSantiago, TZ } from './utils/fecha';
@@ -9,8 +10,10 @@ import TarjetaDia from './components/ventas/TarjetaDia';
 import ModalGestionarDia from './components/ventas/ModalGestionarDia';
 import SeccionMetricas from './components/ventas/SeccionMetricas';
 import { exportarExcel } from './utils/exportExcel';
+import GraficoVentasSemanal from './components/ventas/GraficoVentasSemanal';
 
 export default function PestanaVentas({ miId }: { miId: string }) {
+  const { toast } = useToast();
   const [vista, setVista] = useState<'pos' | 'resumen'>('pos');
   const [busqueda, setBusqueda] = useState('');
   const [filtroOrigen, setFiltroOrigen] = useState<'todos' | OrigenProducto>('todos');
@@ -35,10 +38,10 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const {
     catalogoUnificado, bancos, ventas, offsetSemana,
     periodo, offsetPeriodo, labelPeriodoActual,
-    cargandoResumen, errorVentas, guardando, exito,
+    cargandoResumen, errorVentas, guardando,
     cargarVentas, cambiarPeriodo, cambiarOffset, registrarVenta,
     agrupadoPorDia, calcularMetricas, totalSemana, totalEfectivo, totalTransferencia,
-  } = useVentas(miId);
+  } = useVentas(miId, toast);
 
   const metricas = calcularMetricas();
 
@@ -59,7 +62,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const confirmarPopup = () => {
     if (!popup) return;
     const precio = parseFloat(popup.precio) || 0;
-    if (precio <= 0) return alert('Ingresa un precio válido.');
+    if (precio <= 0) { toast('Ingresa un precio válido', 'error', '⚠️'); return; }
     setLineas(prev => [...prev, {
       producto_id: popup.producto.id,
       nombre: popup.producto.nombre,
@@ -72,9 +75,9 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   };
 
   const agregarManual = () => {
-    if (!manualNombre.trim()) return alert('Escribe el nombre del producto.');
+    if (!manualNombre.trim()) { toast('Escribe el nombre del producto', 'error', '⚠️'); return; }
     const precio = parseFloat(manualPrecio) || 0;
-    if (precio <= 0) return alert('Ingresa un precio válido.');
+    if (precio <= 0) { toast('Ingresa un precio válido', 'error', '⚠️'); return; }
     setLineas(prev => [...prev, {
       producto_id: null,
       nombre: manualNombre.trim(),
@@ -93,6 +96,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
   const limpiarTodo = () => {
     setLineas([]);
     setMostrarManual(false); setPopup(null);
+    toast('¡Venta registrada con éxito!', 'exito', '✅');
   };
 
   const exportarPDF = () => {
@@ -396,7 +400,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
         </div>
       )}
 
-      {exito && <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm">✅ ¡Venta registrada con éxito!</div>}
+
 
       {/* ═══════════════ VISTA RESUMEN ═══════════════ */}
       {vista === 'resumen' && (
@@ -458,6 +462,9 @@ export default function PestanaVentas({ miId }: { miId: string }) {
               <p className="font-black text-amber-800 text-sm leading-tight">{formatCLP(totalSemana)}</p>
             </div>
           </div>
+
+          {/* ── Gráfico semanal ── */}
+          <GraficoVentasSemanal ventas={ventas} periodo={periodo} />
 
           {/* ── Desglose bancos ── */}
           {(() => {
@@ -527,7 +534,7 @@ export default function PestanaVentas({ miId }: { miId: string }) {
           {/* ── Botones de exportación ── */}
           <div className="space-y-2 pt-2">
             <button
-              onClick={() => exportarExcel(ventas, bancos, periodo, labelPeriodoActual)}
+              onClick={() => { const err = exportarExcel(ventas, bancos, periodo, labelPeriodoActual); if (err) toast(err, 'info', '📭'); }}
               className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"
             >
               <span>📊</span> Exportar Excel

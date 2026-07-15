@@ -5,7 +5,7 @@ import { fechaEnSantiago } from '../utils/fecha';
 
 export type Periodo = 'semana' | 'mes' | 'anio';
 
-export function useVentas(miId: string) {
+export function useVentas(miId: string, onToast?: (texto: string, tipo: 'exito' | 'error' | 'info', icono?: string) => void) {
   const [catalogoUnificado, setCatalogoUnificado] = useState<ProductoUnificado[]>([]);
   const [bancos, setBancos] = useState<EntidadBancaria[]>([]);
   const [ventas, setVentas] = useState<any[]>([]);
@@ -133,7 +133,7 @@ export function useVentas(miId: string) {
     fechaVenta: string,
     onSuccess: () => void
   ) => {
-    if (lineas.length === 0) return alert('Agrega al menos un producto.');
+    if (lineas.length === 0) { onToast?.('Agrega al menos un producto', 'error', '⚠️'); return; }
     setGuardando(true);
 
     const hoyStr = fechaEnSantiago(new Date());
@@ -166,7 +166,7 @@ export function useVentas(miId: string) {
     if (insertError) {
       console.error('Error registrando venta:', insertError);
       setGuardando(false);
-      alert(`❌ Error al registrar la venta: ${insertError.message}`);
+      onToast?.(`Error al registrar la venta: ${insertError.message}`, 'error', '❌');
       return;
     }
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../../supabase';
 import type { ResumenDia, EntidadBancaria, MetodoPago } from '../../types';
 import { formatFecha, formatCLP } from '../../utils/fecha';
+import { useToast } from '../../hooks/useToast';
 
 interface ModalGestionarDiaProps {
   dia: ResumenDia;
@@ -11,6 +12,7 @@ interface ModalGestionarDiaProps {
 }
 
 export default function ModalGestionarDia({ dia, onClose, onRefresh, bancos }: ModalGestionarDiaProps) {
+  const { toast } = useToast();
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editCantidad, setEditCantidad] = useState(1);
   const [editPrecio, setEditPrecio] = useState(0);
@@ -46,7 +48,7 @@ export default function ModalGestionarDia({ dia, onClose, onRefresh, bancos }: M
       created_at: new Date(editFechaHora + '-04:00').toISOString()
     }).eq('id', v.id);
     setGuardando(false);
-    if (error) { alert('Error: ' + error.message); return; }
+    if (error) { toast('Error: ' + error.message, 'error', '❌'); return; }
     onRefresh(); onClose();
   };
 
@@ -54,7 +56,7 @@ export default function ModalGestionarDia({ dia, onClose, onRefresh, bancos }: M
     setGuardando(true);
     const { error } = await supabase.from('ventas').delete().eq('id', id);
     setGuardando(false);
-    if (error) { alert('Error: ' + error.message); return; }
+    if (error) { toast('Error: ' + error.message, 'error', '❌'); return; }
     setConfirmandoEliminar(null);
     onRefresh(); onClose();
   };

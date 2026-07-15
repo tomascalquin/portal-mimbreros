@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import type { DesgloseCosto, PeajeSeleccionado } from '../../types';
 import { formatCLP } from '../../utils/fecha';
 import { formatTiempo } from '../../hooks/useFletes';
+import { useToast } from '../../hooks/useToast';
 
 interface Props {
   nombreLocal: string;
@@ -20,6 +21,7 @@ interface Props {
 
 export default function PdfCotizacion(props: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
   const { desglose } = props;
   const peajesActivos = props.peajesSeleccionados.filter(p => p.seleccionado);
   const fecha = new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -37,7 +39,7 @@ export default function PdfCotizacion(props: Props) {
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       }).from(ref.current).save();
     } catch (e) {
-      alert('Error al generar PDF');
+      toast('Error al generar PDF', 'error', '❌');
       console.error(e);
     }
   };

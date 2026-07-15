@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase, getOptimizedUrl } from './supabase';
 import imageCompression from 'browser-image-compression';
+import { useToast } from './hooks/useToast';
 
 export default function PestanaCompras({ miId }: any) {
+  const { toast, confirmar } = useToast();
   const [subPestanaCompras, setSubPestanaCompras] = useState('pedido');
   const [artesanos, setArtesanos] = useState<any[]>([]);
   const [articulosMaestro, setArticulosMaestro] = useState<any[]>([]);
@@ -34,6 +36,9 @@ export default function PestanaCompras({ miId }: any) {
   const [prevFoto1, setPrevFoto1] = useState<string | null>(null);
   const [prevFoto2, setPrevFoto2] = useState<string | null>(null);
   const [procesandoArt, setProcesandoArt] = useState(false);
+
+  // Modal traspasar a vitrina
+  const [modalTraspasar, setModalTraspasar] = useState<{ art: any; precio: string } | null>(null);
 
   const [modalArtesano, setModalArtesano] = useState(false);
   const [formProvRut, setFormProvRut] = useState('');
@@ -102,11 +107,11 @@ export default function PestanaCompras({ miId }: any) {
   };
 
   const procesarPedido = async () => {
-    if (montoTotalCompra === 0) return alert("Debes seleccionar al menos un producto.");
+    if (montoTotalCompra === 0) { toast('Debes seleccionar al menos un producto', 'error', '⚠️'); return; }
     if (!artesanoActual) return;
     
-    const confirmar = window.confirm(`¿Estás seguro de registrar este pedido a ${artesanoActual.nombre} por un total de $${montoTotalCompra.toLocaleString('es-CL')}?`);
-    if (!confirmar) return; 
+    const ok = await confirmar({ titulo: `¿Registrar pedido a ${artesanoActual.nombre}?`, descripcion: `Total: $${montoTotalCompra.toLocaleString('es-CL')}`, textoConfirmar: 'Sí, registrar' });
+    if (!ok) return; 
 
     const items = articulosFiltrados.filter(a => (carrito[a.id] || 0) > 0);
     
@@ -163,7 +168,7 @@ export default function PestanaCompras({ miId }: any) {
     const { error } = await supabase.from('artesanos').insert(nuevoArtesano);
 
     if (error) {
-      alert("Hubo un error al guardar al proveedor: " + error.message);
+      toast('Error al guardar proveedor: ' + error.message, 'error', '❌');
     } else {
       await cargarDatos(); 
       setArtesanoSeleccionadoRut(formProvRut); 
@@ -176,7 +181,7 @@ export default function PestanaCompras({ miId }: any) {
 
   const abrirGestorParaNuevoDirecto = () => {
     if (!artesanoSeleccionadoRut) {
-      alert("Por favor, primero selecciona un artesano en la lista de arriba.");
+      toast('Primero selecciona un artesano en la lista de arriba', 'info', '☝️');
       return;
     }
     limpiarFormGestor();
@@ -278,8 +283,8 @@ export default function PestanaCompras({ miId }: any) {
   };
 
   const eliminarArticulo = async (id: string, nombre: string) => {
-    const confirmar = window.confirm(`¿Seguro que deseas eliminar "${nombre}" del catálogo de este artesano?`);
-    if (!confirmar) return;
+    const ok = await confirmar({ titulo: `¿Eliminar "${nombre}"?`, descripcion: 'Se eliminará del catálogo de este artesano', textoConfirmar: 'Eliminar', peligroso: true });
+    if (!ok) return;
     
     setProcesandoArt(true);
     await supabase.from('articulos_maestro').delete().eq('id', id);
@@ -287,15 +292,18 @@ export default function PestanaCompras({ miId }: any) {
     setProcesandoArt(false);
   };
 
-  const traspasarACatalogo = async (art: any) => {
-    const precioVentaInput = window.prompt(`Vamos a traspasar "${art.nombre}" a tu vitrina pública.\n\nEste producto te cuesta $${art.precio_costo.toLocaleString('es-CL')}.\n¿A qué precio de VENTA al público lo quieres publicar?`, art.precio_costo.toString());
-    
-    if (precioVentaInput === null || precioVentaInput === "") return;
-    
-    const precioVenta = parseFloat(precioVentaInput);
-    if (isNaN(precioVenta)) return alert("Por favor ingresa un número válido.");
+  const abrirModalTraspasar = (art: any) => {
+    setModalTraspasar({ art, precio: art.precio_costo.toString() });
+  };
+
+  const ejecutarTraspaso = async () => {
+    if (!modalTraspasar) return;
+    const { art, precio: precioStr } = modalTraspasar;
+    const precioVenta = parseFloat(precioStr);
+    if (isNaN(precioVenta) || precioVenta <= 0) { toast('Ingresa un precio válido', 'error', '⚠️'); return; }
 
     setProcesandoArt(true);
+    setModalTraspasar(null);
     
     const datosPublicos: any = {
       tienda_id: miId,
@@ -315,9 +323,9 @@ export default function PestanaCompras({ miId }: any) {
     setProcesandoArt(false);
 
     if (error) {
-      alert("Hubo un error al traspasar el producto: " + error.message);
+      toast('Error al traspasar: ' + error.message, 'error', '❌');
     } else {
-      alert("¡Clonación exitosa! 🌟 El producto ya está publicado en tu vitrina pública.");
+      toast('¡Producto publicado en tu vitrina!', 'exito', '🌟');
     }
   };
 
@@ -784,7 +792,7 @@ export default function PestanaCompras({ miId }: any) {
                           <p className="text-amber-700 font-black text-xs mt-0.5">${art.precio_costo.toLocaleString('es-CL')}</p>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => traspasarACatalogo(art)} className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100" title="Publicar en Vitrina">🏪</button>
+                          <button onClick={() => abrirModalTraspasar(art)} className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100" title="Publicar en Vitrina">🏪</button>
                           <button onClick={() => cargarParaEditar(art)} className="w-8 h-8 flex items-center justify-center bg-stone-100 text-stone-600 rounded-lg hover:bg-stone-200" title="Editar">✏️</button>
                           <button onClick={() => eliminarArticulo(art.id, art.nombre)} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="Eliminar">🗑️</button>
                         </div>
@@ -795,6 +803,55 @@ export default function PestanaCompras({ miId }: any) {
               </div>
             )}
             
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TRASPASAR A VITRINA */}
+      {modalTraspasar && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl slide-up space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-xl bg-stone-100 overflow-hidden shrink-0 border border-stone-200">
+                {modalTraspasar.art.foto_url
+                  ? <img src={getOptimizedUrl(modalTraspasar.art.foto_url, 400)} className="w-full h-full object-cover" />
+                  : <span className="w-full h-full flex items-center justify-center text-2xl text-stone-300">📦</span>
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-stone-800 leading-tight truncate">{modalTraspasar.art.nombre}</p>
+                <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider mt-0.5">Costo: ${modalTraspasar.art.precio_costo.toLocaleString('es-CL')}</p>
+              </div>
+              <button onClick={() => setModalTraspasar(null)} className="text-stone-400 hover:text-red-500 font-bold text-xl shrink-0">✕</button>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Precio de Venta al Público ($)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={modalTraspasar.precio}
+                onChange={e => setModalTraspasar(prev => prev ? { ...prev, precio: e.target.value } : prev)}
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-black text-amber-800 text-2xl focus:outline-none focus:border-amber-500"
+                autoFocus
+              />
+              {parseFloat(modalTraspasar.precio) > 0 && (
+                <div className="flex items-center justify-between mt-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                  <span className="text-[10px] font-bold text-green-700 uppercase tracking-wider">Margen estimado</span>
+                  <span className="font-black text-green-700 text-sm">
+                    {Math.round(((parseFloat(modalTraspasar.precio) - modalTraspasar.art.precio_costo) / modalTraspasar.art.precio_costo) * 100)}%
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={ejecutarTraspaso}
+              disabled={procesandoArt}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold transition-colors active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              <span className="text-lg">🏪</span> {procesandoArt ? '⏳ Publicando...' : 'Publicar en Vitrina'}
+            </button>
           </div>
         </div>
       )}
