@@ -70,7 +70,7 @@ export default function PestanaCompras({ miId }: any) {
       { data: artesanosGlobales },
     ] = await Promise.all([
       supabase.from('articulos_maestro').select('id, nombre, precio_costo, precio_venta, foto_url, foto_url_2, stock, rut_artesano, categoria_id, descripcion').eq('tienda_id', miId),
-      supabase.from('registro_compras').select('id, fecha, total, rut_artesano, estado, detalle, nombre_articulo, cantidad, precio_costo').eq('tienda_id', miId).order('fecha', { ascending: false, nullsFirst: false }).limit(300),
+      supabase.from('registro_compras').select('id, fecha, total, rut_artesano, nombre_articulo, cantidad, precio_costo').eq('tienda_id', miId).order('fecha', { ascending: false, nullsFirst: false }).limit(300),
       supabase.from('artesanos').select(SELECT_ARTESANO).eq('tienda_id', miId),
       supabase.from('artesanos').select(SELECT_ARTESANO).is('tienda_id', null),
     ]);
