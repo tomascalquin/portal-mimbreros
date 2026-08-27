@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase, getOptimizedUrl } from './supabase';
+import { useToast } from './hooks/useToast';
 export default function Vitrina() {
   const { tiendaId } = useParams();
+  const { toast } = useToast();
   const [tienda, setTienda] = useState<any>(null);
   const [productos, setProductos] = useState<any[]>([]);
   const [categorias, setCategorias] = useState<any[]>([]);
@@ -13,14 +15,30 @@ export default function Vitrina() {
   const [fotoActualIndex, setFotoActualIndex] = useState(0);
   const [fotoFullscreen, setFotoFullscreen] = useState<string | null>(null);
 
-  const [carrito, setCarrito] = useState<any[]>([]);
+  // Carrito persistente en localStorage
+  const carritoKey = `vitrina_carrito_${tiendaId}`;
+  const [carrito, setCarrito] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem(carritoKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [modalCarrito, setModalCarrito] = useState(false);
-  const [toastMensaje, setToastMensaje] = useState<string | null>(null);
-  const toastTimeoutRef = useRef<any>(null);
   const [cartPulse, setCartPulse] = useState(false);
 
   const [busqueda, setBusqueda] = useState('');
   const [mostrarSubir, setMostrarSubir] = useState(false);
+
+  // Sincronizar carrito con localStorage en cada cambio
+  useEffect(() => {
+    try {
+      if (carrito.length > 0) {
+        localStorage.setItem(carritoKey, JSON.stringify(carrito));
+      } else {
+        localStorage.removeItem(carritoKey);
+      }
+    } catch { /* localStorage full or unavailable */ }
+  }, [carrito, carritoKey]);
 
   useEffect(() => {
     if (tiendaId) cargarVitrina();
@@ -87,16 +105,10 @@ export default function Vitrina() {
   const consultarPorWhatsApp = (producto: any, e?: any) => {
     if (e) e.stopPropagation();
     const telefono = tienda?.telefono;
-    if (!telefono) { mostrarToast('⚠️ Este local aún no tiene WhatsApp configurado'); return; }
+    if (!telefono) { toast('Este local aún no tiene WhatsApp configurado', 'info', '⚠️'); return; }
     const telefonoLimpio = String(telefono).replace(/[^\d]/g, '');
     const mensaje = `¡Hola! Vengo de tu catalogo. Me interesa consultar por: ${producto.nombre}. ¿Me podrías confirmar el valor y si tienen stock disponible?`;
     window.location.href = `https://wa.me/569${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
-  };
-
-  const mostrarToast = (mensaje: string) => {
-    setToastMensaje(mensaje);
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    toastTimeoutRef.current = setTimeout(() => setToastMensaje(null), 3000);
   };
 
   const agregarACotizacion = (producto: any, e?: any) => {
@@ -108,7 +120,7 @@ export default function Vitrina() {
     });
     setCartPulse(true);
     setTimeout(() => setCartPulse(false), 500);
-    mostrarToast(`✔️ Añadido: ${producto.nombre}`);
+    toast(`Añadido: ${producto.nombre}`, 'exito', '✔️');
   };
 
   const ajustarCantidad = (id: string, delta: number) => {
@@ -123,10 +135,13 @@ export default function Vitrina() {
 
   const enviarCotizacionFinal = () => {
     const telefono = tienda?.telefono;
-    if (!telefono) { mostrarToast('⚠️ Este local aún no tiene WhatsApp configurado'); return; }
+    if (!telefono) { toast('Este local aún no tiene WhatsApp configurado', 'info', '⚠️'); return; }
     let mensaje = `¡Hola! Vengo de tu vitrina virtual. Me gustaría cotizar los siguientes productos:\n\n`;
     carrito.forEach(item => { mensaje += `• ${item.cantidad}x ${item.nombre}\n`; });
     const telefonoLimpio = String(telefono).replace(/[^\d]/g, '');
+    // Limpiar carrito después de enviar
+    setCarrito([]);
+    setModalCarrito(false);
     window.location.href = `https://wa.me/569${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
   };
 
@@ -138,7 +153,7 @@ export default function Vitrina() {
       try { await navigator.share({ title: producto.nombre, text: texto, url }); } catch (_) {}
     } else {
       await navigator.clipboard.writeText(url);
-      mostrarToast('🔗 Link copiado al portapapeles');
+      toast('Link copiado al portapapeles', 'info', '🔗');
     }
   };
 
@@ -225,12 +240,7 @@ export default function Vitrina() {
   return (
     <div className="min-h-screen bg-[#FDFCF8] font-sans text-stone-900 pb-10 relative">
 
-      {/* TOAST */}
-      {toastMensaje && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-stone-800/90 backdrop-blur-sm text-white px-6 py-3 rounded-full shadow-xl font-bold text-sm animate-in fade-in slide-in-from-top-4">
-          {toastMensaje}
-        </div>
-      )}
+      {/* Toast ahora manejado por el ToastProvider global */}
 
       {/* FULLSCREEN FOTO */}
       {fotoFullscreen && (
