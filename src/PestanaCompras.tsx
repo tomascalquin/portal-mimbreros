@@ -70,7 +70,7 @@ export default function PestanaCompras({ miId }: any) {
       { data: artesanosGlobales },
     ] = await Promise.all([
       supabase.from('articulos_maestro').select('id, nombre, precio_costo, precio_venta, foto_url, foto_url_2, stock, rut_artesano, categoria_id, descripcion').eq('tienda_id', miId),
-      supabase.from('registro_compras').select('id, fecha, created_at, total, rut_artesano, estado, detalle, nombre_articulo, cantidad, precio_costo').eq('tienda_id', miId).order('created_at', { ascending: false }).limit(300),
+      supabase.from('registro_compras').select('id, fecha, total, rut_artesano, estado, detalle, nombre_articulo, cantidad, precio_costo').eq('tienda_id', miId).order('fecha', { ascending: false, nullsFirst: false }).limit(300),
       supabase.from('artesanos').select(SELECT_ARTESANO).eq('tienda_id', miId),
       supabase.from('artesanos').select(SELECT_ARTESANO).is('tienda_id', null),
     ]);
@@ -531,7 +531,7 @@ export default function PestanaCompras({ miId }: any) {
                     </div>
                     <div className="flex justify-between items-end mt-1 pl-2">
                       <span className="text-stone-500 text-sm">{compra.cantidad}x {compra.nombre_articulo}</span>
-                      <span className="text-stone-400 text-xs font-semibold">{new Date(compra.fecha ?? compra.created_at).toLocaleDateString('es-CL')}</span>
+                      <span className="text-stone-400 text-xs font-semibold">{compra.fecha ? new Date(compra.fecha).toLocaleDateString('es-CL') : '—'}</span>
                     </div>
                   </div>
                 );
