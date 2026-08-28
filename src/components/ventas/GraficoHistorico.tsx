@@ -14,9 +14,11 @@ const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 type ModoVista = 'total' | 'efectivo' | 'transferencia';
+type ModoEje  = 'monto' | 'cantidad';
 
 export default function GraficoHistorico({ ventas, periodo }: Props) {
   const [modoVista, setModoVista] = useState<ModoVista>('total');
+  const [modoEje,   setModoEje]   = useState<ModoEje>('monto');
   const [tooltipIdx, setTooltipIdx] = useState<number | null>(null);
 
   // Calcular el índice "actual" (hoy / mes actual / año actual) para resaltar
@@ -33,17 +35,22 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
 
   const puntos = useMemo(() => {
     if (periodo === 'semana') {
-      const buckets = Array.from({ length: 7 }, (_, i) => ({ label: DIAS_SEMANA[i], total: 0, efectivo: 0, transferencia: 0, txns: 0 }));
+      const buckets = Array.from({ length: 7 }, (_, i) => ({ label: DIAS_SEMANA[i], total: 0, efectivo: 0, transferencia: 0, txns: 0, txnsEfectivo: 0, txnsTransferencia: 0 }));
       const ventasUnicas: Set<string> = new Set();
       ventas.forEach(v => {
         const dayStr = new Date(v.created_at).toLocaleDateString('en-US', { weekday: 'short', timeZone: TZ });
         const map: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
         const i = map[dayStr] ?? 0;
         buckets[i].total += v.total;
-        if (v.metodo_pago === 'Efectivo') buckets[i].efectivo += v.total;
-        else buckets[i].transferencia += v.total;
+        if (v.metodo_pago === 'Efectivo') { buckets[i].efectivo += v.total; }
+        else { buckets[i].transferencia += v.total; }
         const key = `${i}-${v.venta_id || v.id}`;
-        if (!ventasUnicas.has(key)) { ventasUnicas.add(key); buckets[i].txns++; }
+        if (!ventasUnicas.has(key)) {
+          ventasUnicas.add(key);
+          buckets[i].txns++;
+          if (v.metodo_pago === 'Efectivo') buckets[i].txnsEfectivo++;
+          else buckets[i].txnsTransferencia++;
+        }
       });
       return buckets;
     }
@@ -51,51 +58,72 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
     if (periodo === 'mes') {
       const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
       const diasEnMes = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate();
-      const buckets = Array.from({ length: diasEnMes }, (_, i) => ({ label: String(i + 1), total: 0, efectivo: 0, transferencia: 0, txns: 0 }));
+      const buckets = Array.from({ length: diasEnMes }, (_, i) => ({ label: String(i + 1), total: 0, efectivo: 0, transferencia: 0, txns: 0, txnsEfectivo: 0, txnsTransferencia: 0 }));
       const ventasUnicas: Set<string> = new Set();
       ventas.forEach(v => {
         const d = new Date(v.created_at).toLocaleDateString('en-US', { timeZone: TZ, day: 'numeric' });
         const i = parseInt(d, 10) - 1;
         if (i >= 0 && i < buckets.length) {
           buckets[i].total += v.total;
-          if (v.metodo_pago === 'Efectivo') buckets[i].efectivo += v.total;
-          else buckets[i].transferencia += v.total;
+          if (v.metodo_pago === 'Efectivo') { buckets[i].efectivo += v.total; }
+          else { buckets[i].transferencia += v.total; }
           const key = `${i}-${v.venta_id || v.id}`;
-          if (!ventasUnicas.has(key)) { ventasUnicas.add(key); buckets[i].txns++; }
+          if (!ventasUnicas.has(key)) {
+            ventasUnicas.add(key);
+            buckets[i].txns++;
+            if (v.metodo_pago === 'Efectivo') buckets[i].txnsEfectivo++;
+            else buckets[i].txnsTransferencia++;
+          }
         }
       });
       return buckets;
     }
 
     // anio
-    const buckets = Array.from({ length: 12 }, (_, i) => ({ label: MESES[i], total: 0, efectivo: 0, transferencia: 0, txns: 0 }));
+    const buckets = Array.from({ length: 12 }, (_, i) => ({ label: MESES[i], total: 0, efectivo: 0, transferencia: 0, txns: 0, txnsEfectivo: 0, txnsTransferencia: 0 }));
     const ventasUnicas: Set<string> = new Set();
     ventas.forEach(v => {
       const mesStr = new Date(v.created_at).toLocaleDateString('en-US', { timeZone: TZ, month: 'numeric' });
       const i = parseInt(mesStr, 10) - 1;
       if (i >= 0 && i < 12) {
         buckets[i].total += v.total;
-        if (v.metodo_pago === 'Efectivo') buckets[i].efectivo += v.total;
-        else buckets[i].transferencia += v.total;
+        if (v.metodo_pago === 'Efectivo') { buckets[i].efectivo += v.total; }
+        else { buckets[i].transferencia += v.total; }
         const key = `${i}-${v.venta_id || v.id}`;
-        if (!ventasUnicas.has(key)) { ventasUnicas.add(key); buckets[i].txns++; }
+        if (!ventasUnicas.has(key)) {
+          ventasUnicas.add(key);
+          buckets[i].txns++;
+          if (v.metodo_pago === 'Efectivo') buckets[i].txnsEfectivo++;
+          else buckets[i].txnsTransferencia++;
+        }
       }
     });
     return buckets;
   }, [ventas, periodo]);
 
-  const valores = puntos.map(p => p[modoVista]);
+  // Seleccionar la clave correcta según modo eje + modo vista
+  const getValor = (p: typeof puntos[0]) => {
+    if (modoEje === 'cantidad') {
+      if (modoVista === 'efectivo')      return p.txnsEfectivo;
+      if (modoVista === 'transferencia') return p.txnsTransferencia;
+      return p.txns;
+    }
+    return p[modoVista];
+  };
+
+  const valores = puntos.map(p => getValor(p));
   const max = Math.max(...valores, 1);
-  const totalGeneral = puntos.reduce((s, p) => s + p.total, 0);
+  const totalGeneral  = puntos.reduce((s, p) => s + p.total, 0);
   const totalEfectivo = puntos.reduce((s, p) => s + p.efectivo, 0);
-  const totalTransf = puntos.reduce((s, p) => s + p.transferencia, 0);
+  const totalTransf   = puntos.reduce((s, p) => s + p.transferencia, 0);
+  const totalTxns     = puntos.reduce((s, p) => s + p.txns, 0);
 
   if (ventas.length === 0) return null;
 
-  const colores: Record<ModoVista, { bar: string; active: string; txt: string }> = {
-    total:        { bar: '#92400e', active: '#b45309', txt: '#78350f' },
-    efectivo:     { bar: '#15803d', active: '#16a34a', txt: '#14532d' },
-    transferencia:{ bar: '#1d4ed8', active: '#2563eb', txt: '#1e3a8a' },
+  const colores: Record<ModoVista, { bar: string; active: string }> = {
+    total:        { bar: '#92400e', active: '#b45309' },
+    efectivo:     { bar: '#15803d', active: '#16a34a' },
+    transferencia:{ bar: '#1d4ed8', active: '#2563eb' },
   };
   const col = colores[modoVista];
 
@@ -117,26 +145,71 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
             <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
               📊 Gráfico de Ventas
             </p>
-            <p className="font-black text-stone-800 text-xl mt-0.5">{formatCLP(totalGeneral)}</p>
+            {modoEje === 'monto' ? (
+              <p className="font-black text-stone-800 text-xl mt-0.5">{formatCLP(totalGeneral)}</p>
+            ) : (
+              <p className="font-black text-stone-800 text-xl mt-0.5">
+                {totalTxns} <span className="text-sm font-semibold text-stone-400">ventas</span>
+              </p>
+            )}
           </div>
           <div className="text-right text-[10px] text-stone-400 space-y-0.5">
-            <div className="flex items-center gap-1 justify-end">
-              <span className="w-2 h-2 rounded-sm bg-green-500 inline-block" />
-              <span className="font-bold text-green-700">{formatCLP(totalEfectivo)}</span>
-            </div>
-            <div className="flex items-center gap-1 justify-end">
-              <span className="w-2 h-2 rounded-sm bg-blue-500 inline-block" />
-              <span className="font-bold text-blue-700">{formatCLP(totalTransf)}</span>
-            </div>
+            {modoEje === 'monto' ? (
+              <>
+                <div className="flex items-center gap-1 justify-end">
+                  <span className="w-2 h-2 rounded-sm bg-green-500 inline-block" />
+                  <span className="font-bold text-green-700">{formatCLP(totalEfectivo)}</span>
+                </div>
+                <div className="flex items-center gap-1 justify-end">
+                  <span className="w-2 h-2 rounded-sm bg-blue-500 inline-block" />
+                  <span className="font-bold text-blue-700">{formatCLP(totalTransf)}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1 justify-end">
+                  <span className="w-2 h-2 rounded-sm bg-green-500 inline-block" />
+                  <span className="font-bold text-green-700">{puntos.reduce((s, p) => s + p.txnsEfectivo, 0)} efectivo</span>
+                </div>
+                <div className="flex items-center gap-1 justify-end">
+                  <span className="w-2 h-2 rounded-sm bg-blue-500 inline-block" />
+                  <span className="font-bold text-blue-700">{puntos.reduce((s, p) => s + p.txnsTransferencia, 0)} transf.</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Filtros de vista */}
+        {/* Toggle Monto / Cantidad */}
+        <div className="flex gap-1 mb-2 bg-stone-100 p-0.5 rounded-lg">
+          <button
+            onClick={() => setModoEje('monto')}
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold transition-all ${
+              modoEje === 'monto'
+                ? 'bg-white text-stone-700 shadow-sm'
+                : 'text-stone-400 hover:text-stone-600'
+            }`}
+          >
+            💰 Monto
+          </button>
+          <button
+            onClick={() => setModoEje('cantidad')}
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold transition-all ${
+              modoEje === 'cantidad'
+                ? 'bg-white text-stone-700 shadow-sm'
+                : 'text-stone-400 hover:text-stone-600'
+            }`}
+          >
+            🔢 Cantidad
+          </button>
+        </div>
+
+        {/* Filtros de método de pago */}
         <div className="flex gap-1.5">
           {([
-            { k: 'total',        label: 'Total',          emoji: '📊' },
-            { k: 'efectivo',     label: 'Efectivo',       emoji: '💵' },
-            { k: 'transferencia',label: 'Transferencia',  emoji: '🏦' },
+            { k: 'total',        label: 'Total',         emoji: '📊' },
+            { k: 'efectivo',     label: 'Efectivo',      emoji: '💵' },
+            { k: 'transferencia',label: 'Transferencia', emoji: '🏦' },
           ] as { k: ModoVista; label: string; emoji: string }[]).map(({ k, label, emoji }) => (
             <button
               key={k}
@@ -167,17 +240,31 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
                  periodo === 'mes' ? `Día ${puntos[tooltipIdx!].label}` :
                  MESES[tooltipIdx!]}
               </p>
-              <p className="font-black text-stone-800 text-sm">{formatCLP(tooltip[modoVista])}</p>
+              {modoEje === 'monto' ? (
+                <p className="font-black text-stone-800 text-sm">{formatCLP(tooltip[modoVista])}</p>
+              ) : (
+                <p className="font-black text-stone-800 text-sm">
+                  {getValor(tooltip)}{' '}
+                  <span className="text-[10px] font-semibold text-stone-400">venta{getValor(tooltip) !== 1 ? 's' : ''}</span>
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-[10px] text-stone-400">
                 {tooltip.txns} venta{tooltip.txns !== 1 ? 's' : ''}
               </p>
-              {modoVista === 'total' && tooltip.total > 0 && (
+              {modoEje === 'monto' && modoVista === 'total' && tooltip.total > 0 && (
                 <p className="text-[10px] font-bold">
                   <span className="text-green-600">{formatCLP(tooltip.efectivo)}</span>
                   <span className="text-stone-300 mx-1">·</span>
                   <span className="text-blue-600">{formatCLP(tooltip.transferencia)}</span>
+                </p>
+              )}
+              {modoEje === 'cantidad' && modoVista === 'total' && tooltip.txns > 0 && (
+                <p className="text-[10px] font-bold">
+                  <span className="text-green-600">{tooltip.txnsEfectivo} ef.</span>
+                  <span className="text-stone-300 mx-1">·</span>
+                  <span className="text-blue-600">{tooltip.txnsTransferencia} tr.</span>
                 </p>
               )}
             </div>
@@ -196,7 +283,7 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
           style={periodo === 'mes' ? { minWidth: 'max-content', width: '100%' } : {}}
         >
           {puntos.map((p, i) => {
-            const val = p[modoVista];
+            const val = getValor(p);
             const pct = max > 0 ? Math.max((val / max) * 100, val > 0 ? 5 : 0) : 0;
             const esActual = i === idxActual;
             const activo = tooltipIdx === i;
@@ -222,7 +309,10 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
                 {/* Valor encima */}
                 {tieneVenta && periodo !== 'mes' && (
                   <span className="text-[8px] font-black text-stone-400 leading-none whitespace-nowrap">
-                    {val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `${Math.round(val / 1000)}k` : formatCLP(val)}
+                    {modoEje === 'cantidad'
+                      ? val
+                      : val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `${Math.round(val / 1000)}k` : formatCLP(val)
+                    }
                   </span>
                 )}
 
@@ -284,7 +374,7 @@ export default function GraficoHistorico({ ventas, periodo }: Props) {
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 rounded-sm" style={{ background: col.bar }} />
           <span className="text-[9px] font-bold text-stone-400">
-            {modoVista === 'total' ? 'Ventas totales' : modoVista === 'efectivo' ? 'Efectivo' : 'Transferencia'}
+            {modoVista === 'total' ? (modoEje === 'monto' ? 'Ventas totales' : 'N° ventas') : modoVista === 'efectivo' ? 'Efectivo' : 'Transferencia'}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
