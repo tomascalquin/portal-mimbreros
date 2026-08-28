@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import * as XLSX from 'xlsx';
 import { useToast } from './hooks/useToast';
+import { formatCLP } from './utils/fecha';
 
 // ── Mini componente de confirmación inline (reemplaza window.confirm feo de iOS) ──
 function ConfirmDelete({ nombre, onConfirm, onCancel }: { nombre: string; onConfirm: () => void; onCancel: () => void }) {
@@ -25,6 +26,255 @@ function ConfirmDelete({ nombre, onConfirm, onCancel }: { nombre: string; onConf
     </div>
   );
 }
+
+// ── Sección de Gestión de Peajes (datos en Supabase, editables desde la app) ──
+function SeccionPeajes() {
+  const { toast } = useToast();
+  const [peajes, setPeajes] = useState<any[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [editando, setEditando] = useState<any | null>(null); // peaje en edición
+  const [creando, setCreando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [confirmarEliminar, setConfirmarEliminar] = useState<any | null>(null);
+
+  // Formulario
+  const [fNombre, setFNombre] = useState('');
+  const [fRuta, setFRuta] = useState('');
+  const [fTramoOrigen, setFTramoOrigen] = useState('');
+  const [fTramoDestino, setFTramoDestino] = useState('');
+  const [fOrden, setFOrden] = useState('');
+  const [fLiviano, setFLiviano] = useState('');
+  const [fCamion, setFCamion] = useState('');
+
+  useEffect(() => { cargar(); }, []);
+
+  async function cargar() {
+    setCargando(true);
+    const { data } = await supabase.from('peajes_chile').select('*').order('ruta').order('orden');
+    if (data) setPeajes(data);
+    setCargando(false);
+  }
+
+  function abrirEditar(p: any) {
+    setEditando(p);
+    setCreando(false);
+    setFNombre(p.nombre);
+    setFRuta(p.ruta);
+    setFTramoOrigen(p.tramo_origen);
+    setFTramoDestino(p.tramo_destino);
+    setFOrden(String(p.orden));
+    setFLiviano(String(p.tarifa_liviano));
+    setFCamion(String(p.tarifa_camion ?? ''));
+  }
+
+  function abrirCrear() {
+    setCreando(true);
+    setEditando(null);
+    setFNombre(''); setFRuta(''); setFTramoOrigen(''); setFTramoDestino('');
+    setFOrden(''); setFLiviano(''); setFCamion('');
+  }
+
+  function cancelar() { setEditando(null); setCreando(false); }
+
+  async function guardar() {
+    if (!fNombre.trim() || !fRuta.trim() || !fTramoOrigen.trim() || !fTramoDestino.trim()) {
+      toast('Completa nombre, ruta y tramos', 'error', '⚠️'); return;
+    }
+    const liviano = parseInt(fLiviano, 10);
+    if (isNaN(liviano) || liviano <= 0) { toast('Ingresa tarifa liviano válida', 'error', '⚠️'); return; }
+    setGuardando(true);
+    const row = {
+      nombre: fNombre.trim(),
+      ruta: fRuta.trim(),
+      tramo_origen: fTramoOrigen.trim(),
+      tramo_destino: fTramoDestino.trim(),
+      orden: parseInt(fOrden, 10) || 10,
+      tarifa_liviano: liviano,
+      tarifa_camion: fCamion ? parseInt(fCamion, 10) || null : null,
+    };
+    if (editando) {
+      const { error } = await supabase.from('peajes_chile').update(row).eq('id', editando.id);
+      if (error) { toast('Error al actualizar: ' + error.message, 'error', '❌'); }
+      else { toast('Peaje actualizado ✅', 'exito'); }
+    } else {
+      const { error } = await supabase.from('peajes_chile').insert(row);
+      if (error) { toast('Error al crear: ' + error.message, 'error', '❌'); }
+      else { toast('Peaje creado ✅', 'exito'); }
+    }
+    setGuardando(false);
+    cancelar();
+    await cargar();
+  }
+
+  async function eliminar() {
+    if (!confirmarEliminar) return;
+    await supabase.from('peajes_chile').delete().eq('id', confirmarEliminar.id);
+    setConfirmarEliminar(null);
+    await cargar();
+    toast('Peaje eliminado', 'info', '🗑️');
+  }
+
+  // Agrupar por ruta para mostrar ordenado
+  const porRuta: Record<string, any[]> = {};
+  peajes.forEach(p => {
+    if (!porRuta[p.ruta]) porRuta[p.ruta] = [];
+    porRuta[p.ruta].push(p);
+  });
+
+  const formularioAbierto = editando || creando;
+
+  return (
+    <>
+      {confirmarEliminar && (
+        <ConfirmDelete
+          nombre={confirmarEliminar.nombre}
+          onConfirm={eliminar}
+          onCancel={() => setConfirmarEliminar(null)}
+        />
+      )}
+
+      <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+        <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🛣️</span>
+            <div>
+              <h3 className="font-bold text-stone-700 text-sm">Peajes de Chile</h3>
+              <p className="text-[10px] text-stone-400 mt-0.5">Tarifas usadas en el cotizador de fletes</p>
+            </div>
+          </div>
+          {!formularioAbierto && (
+            <button
+              onClick={abrirCrear}
+              className="text-amber-700 text-xs font-bold hover:text-amber-900 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl transition-all active:scale-95"
+            >
+              + Nuevo
+            </button>
+          )}
+        </div>
+
+        {/* Formulario crear/editar */}
+        {formularioAbierto && (
+          <div className="p-4 border-b border-stone-100 bg-amber-50 space-y-3">
+            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">
+              {creando ? '➕ Nuevo peaje' : `✏️ Editando: ${editando.nombre}`}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2">
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Nombre del peaje</label>
+                <input value={fNombre} onChange={e => setFNombre(e.target.value)} placeholder="Ej: Angostura (Paine)"
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Ruta</label>
+                <input value={fRuta} onChange={e => setFRuta(e.target.value)} placeholder="Ej: Ruta 5"
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Orden en ruta</label>
+                <input type="number" value={fOrden} onChange={e => setFOrden(e.target.value)} placeholder="10, 20..."
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Tramo origen</label>
+                <input value={fTramoOrigen} onChange={e => setFTramoOrigen(e.target.value)} placeholder="Ej: Santiago"
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Tramo destino</label>
+                <input value={fTramoDestino} onChange={e => setFTramoDestino(e.target.value)} placeholder="Ej: Rancagua"
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Tarifa liviano ($)</label>
+                <input type="number" value={fLiviano} onChange={e => setFLiviano(e.target.value)} placeholder="2900"
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-400 mb-1">Tarifa camión ($)</label>
+                <input type="number" value={fCamion} onChange={e => setFCamion(e.target.value)} placeholder="6500"
+                  className="w-full p-2.5 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-500 bg-white" />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={guardar} disabled={guardando}
+                className="flex-1 bg-amber-700 text-white py-3 rounded-xl font-bold text-sm hover:bg-amber-800 active:scale-95 transition-all disabled:opacity-60">
+                {guardando ? '⏳' : creando ? '✅ Crear peaje' : '✅ Guardar cambios'}
+              </button>
+              <button onClick={cancelar}
+                className="bg-stone-200 text-stone-700 px-4 py-3 rounded-xl font-bold text-sm hover:bg-stone-300 active:scale-95 transition-all">
+                ✕
+              </button>
+            </div>
+            <p className="text-[9px] text-stone-400 leading-relaxed">
+              💡 <strong>Tramo origen/destino:</strong> ciudad exacta donde comienza y termina este peaje en la ruta.
+              El cotizador selecciona automáticamente los peajes intermedios entre origen y destino del flete.
+            </p>
+          </div>
+        )}
+
+        {/* Lista de peajes agrupados por ruta */}
+        <div className="p-4 space-y-4">
+          {cargando ? (
+            <div className="flex items-center justify-center py-8 gap-2">
+              <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-stone-400 text-sm font-bold">Cargando peajes...</p>
+            </div>
+          ) : peajes.length === 0 ? (
+            <div className="text-center py-8 bg-stone-50 rounded-xl border border-dashed border-stone-200">
+              <span className="text-3xl block mb-2">🛣️</span>
+              <p className="text-stone-500 font-black text-sm">No hay peajes cargados</p>
+              <p className="text-stone-400 text-xs mt-1">Agrega el primero con el botón "＋ Nuevo"</p>
+              <p className="text-amber-600 text-xs mt-3 font-bold">
+                O ejecuta el SQL seed en Supabase:
+              </p>
+              <p className="text-stone-400 text-[10px] mt-0.5 font-mono">
+                supabase/seed_peajes.sql
+              </p>
+            </div>
+          ) : (
+            Object.entries(porRuta).map(([ruta, lista]) => (
+              <div key={ruta}>
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">
+                  🛣 {ruta}
+                </p>
+                <div className="space-y-1.5">
+                  {lista.sort((a, b) => a.orden - b.orden).map(p => (
+                    <div key={p.id} className="flex items-center justify-between px-3 py-2.5 border border-stone-100 rounded-xl bg-stone-50 hover:border-amber-200 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-stone-700 text-sm truncate">{p.nombre}</p>
+                        <p className="text-[10px] text-stone-400">
+                          {p.tramo_origen} → {p.tramo_destino}
+                        </p>
+                      </div>
+                      <div className="text-right mx-3 shrink-0">
+                        <p className="text-xs font-black text-stone-800">{formatCLP(p.tarifa_liviano)}</p>
+                        {p.tarifa_camion && (
+                          <p className="text-[10px] text-stone-400">{formatCLP(p.tarifa_camion)} 🚚</p>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button onClick={() => abrirEditar(p)}
+                          className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 text-stone-500 rounded-lg hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 active:scale-95 transition-all text-sm">
+                          ✏️
+                        </button>
+                        <button onClick={() => setConfirmarEliminar(p)}
+                          className="w-8 h-8 flex items-center justify-center bg-white border border-stone-200 text-red-400 rounded-lg hover:bg-red-50 hover:border-red-300 active:scale-95 transition-all text-sm">
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+
 
 export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any) {
   const { toast } = useToast();
@@ -311,7 +561,11 @@ export default function PestanaLocal({ miId, nombreLocal, setNombreLocal }: any)
         </div>
       </div>
 
-      {/* ── CARD 4: Exportar ── */}
+      {/* ── CARD 4: Peajes ── */}
+      <SeccionPeajes />
+
+      {/* ── CARD 5: Exportar ── */}
+
       <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
         <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-2">
           <span className="text-lg">📥</span>

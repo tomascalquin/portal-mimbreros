@@ -10,7 +10,7 @@ import TarjetaDia from './components/ventas/TarjetaDia';
 import ModalGestionarDia from './components/ventas/ModalGestionarDia';
 import SeccionMetricas from './components/ventas/SeccionMetricas';
 import { exportarExcel } from './utils/exportExcel';
-import GraficoVentasSemanal from './components/ventas/GraficoVentasSemanal';
+import GraficoHistorico from './components/ventas/GraficoHistorico';
 
 export default function PestanaVentas({ miId }: { miId: string }) {
   const { toast } = useToast();
@@ -404,149 +404,215 @@ export default function PestanaVentas({ miId }: { miId: string }) {
 
       {/* ═══════════════ VISTA RESUMEN ═══════════════ */}
       {vista === 'resumen' && (
-        <div className="space-y-4 pb-10">
+        <div className="space-y-5 pb-10">
 
-          {/* ── Selector de período ── */}
-          <div className="flex bg-stone-100 p-1 rounded-xl gap-1">
-            {(['semana', 'mes', 'anio'] as Periodo[]).map(p => (
-              <button
-                key={p}
-                onClick={() => cambiarPeriodo(p)}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                  periodo === p ? 'bg-white shadow text-stone-900' : 'text-stone-500 hover:text-stone-700'
-                }`}
-              >
-                {p === 'semana' ? '📅 Semana' : p === 'mes' ? '🗓 Mes' : '📆 Año'}
-              </button>
-            ))}
+          {/* ── 1. SELECTOR DE PERÍODO ─────────────────────────────
+               Tres botones grandes y claros. El activo se destaca.
+          ─────────────────────────────────────────────────────── */}
+          <div>
+            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Ver ventas por</p>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { k: 'semana', emoji: '📅', label: 'Semana', sub: 'Lun–Dom' },
+                { k: 'mes',    emoji: '🗓', label: 'Mes',    sub: 'Mensual' },
+                { k: 'anio',   emoji: '📆', label: 'Año',    sub: 'Anual'   },
+              ] as { k: Periodo; emoji: string; label: string; sub: string }[]).map(({ k, emoji, label, sub }) => (
+                <button
+                  key={k}
+                  onClick={() => cambiarPeriodo(k)}
+                  className={`py-3 rounded-2xl border-2 flex flex-col items-center gap-0.5 transition-all ${
+                    periodo === k
+                      ? 'bg-stone-800 border-stone-800 text-white shadow-lg scale-[1.03]'
+                      : 'bg-white border-stone-200 text-stone-600 hover:border-stone-400'
+                  }`}
+                >
+                  <span className="text-lg leading-none">{emoji}</span>
+                  <span className="font-black text-sm">{label}</span>
+                  <span className={`text-[9px] font-bold ${periodo === k ? 'text-stone-300' : 'text-stone-400'}`}>{sub}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* ── Navegador ← → ── */}
+          {/* ── 2. NAVEGADOR ← → CON PERIODO ACTUAL ───────────────
+               Header oscuro con el período y flechas para navegar.
+          ─────────────────────────────────────────────────────── */}
           <div className="bg-stone-800 text-white rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <div className="flex items-center gap-3 px-4 py-3">
               <button
                 onClick={() => cambiarOffset(offsetPeriodo - 1)}
-                className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 rounded-xl font-bold text-lg transition-colors active:scale-95"
+                className="w-10 h-10 flex items-center justify-center bg-stone-700 hover:bg-stone-600 rounded-xl font-bold text-xl transition-colors active:scale-90 shrink-0"
+                title="Período anterior"
               >←</button>
-              <div className="text-center">
-                <p className="font-bold text-sm">{labelPeriodoActual}</p>
+              <div className="flex-1 text-center">
+                <p className="font-black text-base leading-tight">{labelPeriodoActual}</p>
+                {offsetPeriodo < 0 && (
+                  <p className="text-stone-400 text-[10px] font-bold mt-0.5">
+                    {periodo === 'semana' ? `Hace ${Math.abs(offsetPeriodo)} semana${Math.abs(offsetPeriodo) !== 1 ? 's' : ''}` :
+                     periodo === 'mes'   ? `Hace ${Math.abs(offsetPeriodo)} mes${Math.abs(offsetPeriodo) !== 1 ? 'es' : ''}` :
+                                          `Hace ${Math.abs(offsetPeriodo)} año${Math.abs(offsetPeriodo) !== 1 ? 's' : ''}`}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => cambiarOffset(offsetPeriodo + 1)}
                 disabled={offsetPeriodo === 0}
-                className="w-9 h-9 flex items-center justify-center bg-stone-700 hover:bg-stone-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-lg transition-colors active:scale-95"
+                className="w-10 h-10 flex items-center justify-center bg-stone-700 hover:bg-stone-600 disabled:opacity-20 disabled:cursor-not-allowed rounded-xl font-bold text-xl transition-colors active:scale-90 shrink-0"
+                title={offsetPeriodo === 0 ? 'Ya estás en el período actual' : 'Período siguiente'}
               >→</button>
             </div>
             {offsetPeriodo < 0 && (
               <button
                 onClick={() => cambiarOffset(0)}
-                className="w-full text-center text-amber-300 text-xs font-bold py-2 hover:text-amber-200 transition-colors border-t border-stone-700"
+                className="w-full text-center text-amber-300 text-xs font-bold py-2.5 hover:text-amber-100 transition-colors border-t border-stone-700"
               >
-                Volver al período actual
+                ↩ Volver al período actual
               </button>
             )}
           </div>
 
-          {/* ── Totales ── */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-1">💵 Efectivo</p>
-              <p className="font-black text-green-800 text-sm leading-tight">{formatCLP(totalEfectivo)}</p>
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-1">🏦 Transf.</p>
-              <p className="font-black text-blue-800 text-sm leading-tight">{formatCLP(totalTransferencia)}</p>
-            </div>
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
-              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">✅ Total</p>
-              <p className="font-black text-amber-800 text-sm leading-tight">{formatCLP(totalSemana)}</p>
-            </div>
-          </div>
-
-          {/* ── Gráfico semanal ── */}
-          <GraficoVentasSemanal ventas={ventas} periodo={periodo} />
-
-          {/* ── Desglose bancos ── */}
-          {(() => {
-            const desglose: Record<string, { nombre: string; total: number }> = {};
-            ventas.filter(v => v.metodo_pago === 'Transferencia').forEach(v => {
-              const key = v.banco_id || '__sin_banco__';
-              const banco = bancos.find(b => b.id === v.banco_id);
-              const nombre = banco?.nombre || 'Sin cuenta asignada';
-              if (!desglose[key]) desglose[key] = { nombre, total: 0 };
-              desglose[key].total += v.total;
-            });
-            const entradas = Object.entries(desglose);
-            if (entradas.length === 0) return null;
-            return (
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
-                <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">🏦 Transferencias por cuenta</p>
-                {entradas.map(([key, info]) => (
-                  <div key={key} className="flex justify-between items-center bg-white border border-blue-100 rounded-xl px-3 py-2">
-                    <span className="text-sm font-bold text-blue-800">{info.nombre}</span>
-                    <span className="font-black text-blue-900 text-sm">{formatCLP(info.total)}</span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-
-          {/* ── Métricas inteligentes ── */}
-          {metricas && <SeccionMetricas m={metricas} />}
-
-          {/* ── Detalle por día (solo en modo semana) ── */}
+          {/* ── 3. TARJETAS DE TOTALES ─────────────────────────────
+               Grande, clara, imposible de confundir.
+          ─────────────────────────────────────────────────────── */}
           {cargandoResumen ? (
-            <p className="text-center py-8 text-stone-400 font-bold text-sm">Cargando...</p>
+            <div className="flex items-center justify-center py-10 gap-3">
+              <div className="w-5 h-5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-stone-400 font-bold text-sm">Cargando ventas...</p>
+            </div>
           ) : errorVentas ? (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center space-y-2">
-              <span className="text-2xl block">⚠️</span>
-              <p className="font-bold text-red-700 text-sm">Error al cargar ventas</p>
+              <span className="text-3xl block">⚠️</span>
+              <p className="font-black text-red-700">Error al cargar ventas</p>
               <p className="text-red-600 text-xs font-mono break-all">{errorVentas}</p>
-              <button onClick={() => cargarVentas(offsetPeriodo)} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-xs">Reintentar</button>
-            </div>
-          ) : agrupadoPorDia().length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center">
-              <span className="text-3xl block mb-2">📭</span>
-              <p className="text-stone-400 font-bold text-sm">Sin ventas en este período.</p>
-            </div>
-          ) : periodo === 'semana' ? (
-            <div className="space-y-3">
-              <h3 className="font-bold text-stone-500 text-xs uppercase tracking-widest">Detalle por Día</h3>
-              {agrupadoPorDia().map(d => <TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />)}
+              <button onClick={() => cargarVentas(offsetPeriodo)} className="mt-2 bg-red-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs">🔄 Reintentar</button>
             </div>
           ) : (
-            <div className="bg-white border border-stone-200 rounded-2xl p-4">
-              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3">📅 Días con ventas en el período</p>
-              <div className="space-y-1.5">
-                {agrupadoPorDia().map(d => (
-                  <div key={d.fecha} className="flex justify-between items-center py-1.5 border-b border-stone-100 last:border-0">
-                    <span className="text-sm font-bold text-stone-700">{formatFecha(d.fecha)}</span>
-                    <div className="text-right">
-                      <span className="font-black text-amber-700 text-sm">{formatCLP(d.total)}</span>
-                      <span className="text-[10px] text-stone-400 ml-2">{d.ventas} tx</span>
-                    </div>
+            <>
+              {/* Totales grandes */}
+              <div className="bg-gradient-to-br from-stone-800 to-stone-900 rounded-2xl p-4 text-white shadow-lg">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Total del período</p>
+                <p className="font-black text-3xl text-white mb-4">{formatCLP(totalSemana)}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-green-900/50 border border-green-700/50 rounded-xl px-3 py-2.5">
+                    <p className="text-[10px] font-bold text-green-400 uppercase tracking-wider mb-1">💵 Efectivo</p>
+                    <p className="font-black text-green-300 text-lg leading-tight">{formatCLP(totalEfectivo)}</p>
+                    {totalSemana > 0 && (
+                      <p className="text-[10px] text-green-500 mt-0.5">{((totalEfectivo / totalSemana) * 100).toFixed(0)}% del total</p>
+                    )}
                   </div>
-                ))}
+                  <div className="bg-blue-900/50 border border-blue-700/50 rounded-xl px-3 py-2.5">
+                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">🏦 Transferencia</p>
+                    <p className="font-black text-blue-300 text-lg leading-tight">{formatCLP(totalTransferencia)}</p>
+                    {totalSemana > 0 && (
+                      <p className="text-[10px] text-blue-500 mt-0.5">{((totalTransferencia / totalSemana) * 100).toFixed(0)}% del total</p>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* ── Botones de exportación ── */}
-          <div className="space-y-2 pt-2">
-            <button
-              onClick={() => { const err = exportarExcel(ventas, bancos, periodo, labelPeriodoActual); if (err) toast(err, 'info', '📭'); }}
-              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"
-            >
-              <span>📊</span> Exportar Excel
-            </button>
-            {periodo === 'semana' && (
-              <>
-                <button onClick={exportarPDF} className="w-full bg-stone-800 hover:bg-stone-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"><span>📄</span> Exportar PDF</button>
-                <button onClick={compartirWhatsapp} className="w-full bg-[#25D366] hover:bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors"><span>💬</span> Compartir WhatsApp</button>
-              </>
-            )}
-            <button onClick={() => cargarVentas(offsetPeriodo)} className="w-full bg-stone-100 text-stone-600 py-3.5 rounded-2xl font-bold text-sm hover:bg-stone-200">🔄 Actualizar datos</button>
-          </div>
+              {/* ── 4. GRÁFICO HISTÓRICO ─────────────────────────────
+                   Barras con filtro de efectivo/transf/total y tooltip.
+              ─────────────────────────────────────────────────────── */}
+              {ventas.length > 0 && <GraficoHistorico ventas={ventas} periodo={periodo} />}
+
+              {/* ── 5. DESGLOSE POR BANCO ──────────────────────────── */}
+              {(() => {
+                const desglose: Record<string, { nombre: string; total: number }> = {};
+                ventas.filter(v => v.metodo_pago === 'Transferencia').forEach(v => {
+                  const key = v.banco_id || '__sin_banco__';
+                  const banco = bancos.find(b => b.id === v.banco_id);
+                  const nombre = banco?.nombre || 'Sin cuenta asignada';
+                  if (!desglose[key]) desglose[key] = { nombre, total: 0 };
+                  desglose[key].total += v.total;
+                });
+                const entradas = Object.entries(desglose);
+                if (entradas.length === 0) return null;
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
+                    <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest mb-3">🏦 Transferencias por cuenta bancaria</p>
+                    {entradas.map(([key, info]) => (
+                      <div key={key} className="flex justify-between items-center bg-white border border-blue-100 rounded-xl px-3 py-2.5">
+                        <span className="text-sm font-bold text-blue-800">{info.nombre}</span>
+                        <span className="font-black text-blue-900 text-sm">{formatCLP(info.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── 6. MÉTRICAS INTELIGENTES ──────────────────────── */}
+              {metricas && <SeccionMetricas m={metricas} />}
+
+              {/* ── 7. DETALLE POR DÍA ────────────────────────────── */}
+              {agrupadoPorDia().length === 0 ? (
+                <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center">
+                  <span className="text-4xl block mb-3">📭</span>
+                  <p className="font-black text-stone-500 text-base">Sin ventas en este período</p>
+                  <p className="text-stone-400 text-sm mt-1">Registra ventas en la pestaña «Registrar Venta»</p>
+                </div>
+              ) : periodo === 'semana' ? (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">📋 Detalle por día — toca cada tarjeta para ver el desglose</p>
+                  {agrupadoPorDia().map(d => <TarjetaDia key={d.fecha} dia={d} onGestionar={setDiaGestion} />)}
+                </div>
+              ) : (
+                <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-stone-100">
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                      📅 Días con ventas en el período
+                    </p>
+                  </div>
+                  <div className="divide-y divide-stone-100">
+                    {agrupadoPorDia().map(d => (
+                      <div key={d.fecha} className="flex justify-between items-center px-4 py-3">
+                        <div>
+                          <span className="text-sm font-bold text-stone-700">{formatFecha(d.fecha)}</span>
+                          <span className="text-[10px] text-stone-400 ml-2">{d.ventas} venta{d.ventas !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-black text-amber-700 text-sm">{formatCLP(d.total)}</p>
+                          {d.efectivo > 0 && d.transferencia > 0 && (
+                            <p className="text-[10px] text-stone-400">
+                              <span className="text-green-600">{formatCLP(d.efectivo)}</span>
+                              <span className="mx-1">·</span>
+                              <span className="text-blue-600">{formatCLP(d.transferencia)}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── 8. BOTONES DE EXPORTACIÓN ─────────────────────── */}
+              <div className="space-y-2 pt-1">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">⬇️ Exportar datos</p>
+                <button
+                  onClick={() => { const err = exportarExcel(ventas, bancos, periodo, labelPeriodoActual); if (err) toast(err, 'info', '📭'); }}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all"
+                >
+                  <span>📊</span> Exportar a Excel
+                </button>
+                {periodo === 'semana' && (
+                  <>
+                    <button onClick={exportarPDF} className="w-full bg-stone-800 hover:bg-stone-900 active:scale-[0.98] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all">
+                      <span>📄</span> Exportar PDF
+                    </button>
+                    <button onClick={compartirWhatsapp} className="w-full bg-[#25D366] hover:bg-green-600 active:scale-[0.98] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all">
+                      <span>💬</span> Compartir por WhatsApp
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => cargarVentas(offsetPeriodo)}
+                  className="w-full bg-stone-100 text-stone-600 py-3.5 rounded-2xl font-bold text-sm hover:bg-stone-200 transition-colors flex items-center justify-center gap-2"
+                >
+                  🔄 Actualizar datos
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

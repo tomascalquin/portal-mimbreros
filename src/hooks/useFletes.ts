@@ -166,60 +166,63 @@ export function sugiereAlmuerzo(distanciaKm: number, idaYVuelta: boolean, veloci
 }
 
 // ── Función para encontrar peajes entre origen y destino ──
+// Usa únicamente los datos de la tabla peajes_chile en Supabase.
+// Para agregar/actualizar peajes ve a Administración → Peajes en la app.
 function encontrarPeajesRuta(
-  peajes: PeajeChile[],
+  peajesDB: PeajeChile[],
   origen: string,
   destino: string,
   tipoVehiculo: TipoVehiculo,
 ): PeajeSeleccionado[] {
-  const normalizar = (c: string) => c === 'Viña del Mar' ? 'Valparaíso' : c;
-  const origenN = normalizar(origen);
-  const destinoN = normalizar(destino);
+  const norm = (c: string) => c === 'Viña del Mar' ? 'Valparaíso' : c;
+  const origenN = norm(origen);
+  const destinoN = norm(destino);
 
-  if (origenN === destinoN) return [];
+  if (origenN === destinoN || peajesDB.length === 0) return [];
 
+  // Agrupar por ruta y recorrer de manera ordenada
   const rutas: Record<string, PeajeChile[]> = {};
-  peajes.forEach(p => {
+  peajesDB.forEach(p => {
     if (!rutas[p.ruta]) rutas[p.ruta] = [];
     rutas[p.ruta].push(p);
   });
 
   const resultado: PeajeSeleccionado[] = [];
+  const esCamion = tipoVehiculo === 'camion_chico' || tipoVehiculo === 'camion_grande';
 
-  for (const [, plazas] of Object.entries(rutas)) {
+  for (const plazas of Object.values(rutas)) {
     const ordenadas = [...plazas].sort((a, b) => a.orden - b.orden);
-
     let idxOrigen = -1;
     let idxDestino = -1;
 
     for (let i = 0; i < ordenadas.length; i++) {
-      if (ordenadas[i].tramo_origen === origenN || ordenadas[i].tramo_destino === origenN) {
+      const p = ordenadas[i];
+      if (p.tramo_origen === origenN || p.tramo_destino === origenN) {
         if (idxOrigen === -1) idxOrigen = i;
       }
-      if (ordenadas[i].tramo_origen === destinoN || ordenadas[i].tramo_destino === destinoN) {
+      if (p.tramo_origen === destinoN || p.tramo_destino === destinoN) {
         idxDestino = i;
       }
     }
 
     if (idxOrigen === -1 || idxDestino === -1) continue;
 
-    const [desde, hasta] = idxOrigen <= idxDestino ? [idxOrigen, idxDestino] : [idxDestino, idxOrigen];
+    const [desde, hasta] = idxOrigen <= idxDestino
+      ? [idxOrigen, idxDestino]
+      : [idxDestino, idxOrigen];
 
     for (let i = desde; i <= hasta; i++) {
       const p = ordenadas[i];
-      const esCamion = tipoVehiculo === 'camion_chico' || tipoVehiculo === 'camion_grande';
       const tarifa = esCamion && p.tarifa_camion ? p.tarifa_camion : p.tarifa_liviano;
-
-      resultado.push({
-        peaje: p,
-        seleccionado: true,
-        tarifa,
-      });
+      resultado.push({ peaje: p, seleccionado: true, tarifa });
     }
   }
 
   return resultado;
 }
+
+
+
 
 /** Detectar rutas frecuentes del historial */
 export function getRutasFrecuentes(cotizaciones: CotizacionFlete[], max = 3): {
